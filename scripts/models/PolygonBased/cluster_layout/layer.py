@@ -16,7 +16,6 @@ class EncoderLayer(nn.Module):
         super(EncoderLayer, self).__init__()
 
         self.self_attn = MultiHeadAttention(n_head=n_head, d_model=d_model, dropout=dropout)
-        self.cross_attn = MultiHeadAttention(n_head=n_head, d_model=d_model, dropout=dropout)
         self.pos_ffn = PositionwiseFeedForward(d_model=d_model, d_inner=d_inner, dropout=dropout)
 
     def forward(self, enc_input, mask=None, condition=None):
@@ -32,8 +31,6 @@ class EncoderLayer(nn.Module):
         """
 
         enc_output = self.self_attn(enc_input, enc_input, enc_input, mask=mask)
-        if condition is not None:
-            enc_output = self.cross_attn(enc_output, condition, condition, mask=mask)
         enc_output = self.pos_ffn(enc_output)
 
         return enc_output

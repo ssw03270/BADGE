@@ -62,7 +62,11 @@ def main():
     for epoch in range(args.num_epochs):
         model.train()
         total_loss = 0
-        progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", disable=not accelerator.is_local_main_process)
+        if accelerator.is_main_process:
+            progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", disable=not accelerator.is_local_main_process)
+        else:
+            progress_bar = None
+
         for batch in progress_bar:
             optimizer.zero_grad()
 
@@ -79,7 +83,9 @@ def main():
             accelerator.backward(loss)
             optimizer.step()
             total_loss += loss.item()
-            progress_bar.set_postfix({'loss': total_loss / (progress_bar.n + 1), 'lr': optimizer.param_groups[0]['lr']})
+
+            if accelerator.is_main_process:
+                progress_bar.set_postfix({'loss': total_loss / (progress_bar.n + 1), 'lr': optimizer.param_groups[0]['lr']})
 
         # 검증 단계 (옵션)
         model.eval()
@@ -102,9 +108,10 @@ def main():
                 if vq_loss is not None:
                     val_loss_vq += vq_loss
 
-        print(f"Validation Loss: {val_loss / len(val_dataloader)}")
-        print(f"Validation Coords Loss: {val_loss_coords / len(val_dataloader)}")
-        print(f"Validation VQ Loss: {val_loss_vq / len(val_dataloader)}")
+        if accelerator.is_main_process:
+            print(f"Validation Loss: {val_loss / len(val_dataloader)}")
+            print(f"Validation Coords Loss: {val_loss_coords / len(val_dataloader)}")
+            print(f"Validation VQ Loss: {val_loss_vq / len(val_dataloader)}")
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
@@ -115,7 +122,7 @@ def main():
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
 
         # 최저 검증 손실 모델 저장
-        if val_loss < best_val_loss:
+        if accelerator.is_main_process and val_loss < best_val_loss:
             best_val_loss = val_loss
             best_model_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
