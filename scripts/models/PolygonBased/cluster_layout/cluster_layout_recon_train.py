@@ -122,6 +122,7 @@ def main():
             best_val_loss = val_loss
             best_model_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
+            unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)
 if __name__ == "__main__":
     main()
