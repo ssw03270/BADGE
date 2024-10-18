@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     args = parser.parse_args()
 
-    accelerator = Accelerator(find_unused_parameters=True)  # 여기서 설정
+    accelerator = Accelerator()  # 여기서 설정
     device = accelerator.device
     set_seed(42)
 

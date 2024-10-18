@@ -69,20 +69,8 @@ class TransformerEncoder(nn.Module):
             EncoderLayer(d_model=d_model, d_inner=d_inner, n_head=n_head, dropout=dropout)
             for _ in range(n_layer)
         ])
-        self.downsample_layers = nn.ModuleList([
-            nn.Identity(),                      # After Layer 1: Keep sequence length at 10
-            nn.AdaptiveAvgPool1d(output_size=5),  # After Layer 2: Downsample to 5
-            nn.AdaptiveAvgPool1d(output_size=2),  # After Layer 3: Downsample to 2
-            nn.AdaptiveAvgPool1d(output_size=1),  # After Layer 4: Downsample to 1
-        ])
-        self.upsample_layers = nn.ModuleList([
-            nn.Identity(),  # After Layer 1: 1
-            nn.Upsample(size=2, mode='linear', align_corners=True),  # After Layer 2: 2
-            nn.Upsample(size=5, mode='linear', align_corners=True),  # After Layer 3: 5
-            nn.Upsample(size=10, mode='linear', align_corners=True),  # After Layer 4: 10
-        ])
 
-    def forward(self, x, condition=None, enc_mask=None, mode="enc"):
+    def forward(self, x, condition=None, enc_mask=None):
         """
         Forward pass for the BoundaryEncoder.
 
@@ -97,20 +85,8 @@ class TransformerEncoder(nn.Module):
         enc_input = x + self.pos_enc(x).expand(x.shape[0], -1, -1)
         enc_output = self.dropout(enc_input)
 
-        if mode == "enc":
-            for enc_layer, downsample in zip(self.layer_stack, self.downsample_layers):
-                enc_output = enc_layer(enc_output, enc_mask, condition)
-
-                # enc_output = enc_output.permute(0, 2, 1)
-                # enc_output = downsample(enc_output)
-                # enc_output = enc_output.permute(0, 2, 1)
-        elif mode == "dec":
-            for enc_layer, upsample in zip(self.layer_stack, self.upsample_layers):
-                enc_output = enc_layer(enc_output, enc_mask, condition)
-
-                # enc_output = enc_output.permute(0, 2, 1)  # Shape: [batch_size, d_model, seq_len]
-                # enc_output = upsample(enc_output)  # Shape: depends on upsampling
-                # enc_output = enc_output.permute(0, 2, 1)
+        for enc_layer, upsample in zip(self.layer_stack, self.upsample_layers):
+            enc_output = enc_layer(enc_output, enc_mask, condition)
 
         return enc_output
 
@@ -130,9 +106,6 @@ class Transformer(nn.Module):
         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
 
         self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost)
-        self.quantizer = GumbelQuantize(d_model, d_model, codebook_size)
-
-        self.dropout = nn.Dropout(dropout)
 
         self.coords_fc = nn.Linear(d_model, self.n)
 
