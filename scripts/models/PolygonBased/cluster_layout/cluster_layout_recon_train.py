@@ -38,15 +38,14 @@ def main():
     val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, shuffle=False)
 
     # 모델 초기화
-    d_model = 512
-    d_inner = d_model * 4
+    d_inner = args.d_model * 4
     n_layer = 4
     n_head = 8
     dropout = 0.1
-    codebook_size, commitment_cost = 64, 0.25
+    commitment_cost = 0.25
     n_tokens = 10
-    model = Transformer(d_model=d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
-                        codebook_size=codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
+    model = Transformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
+                        codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
 
     # 옵티마이저 및 스케줄러 설정
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
