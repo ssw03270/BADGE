@@ -62,10 +62,7 @@ def main():
     for epoch in range(args.num_epochs):
         model.train()
         total_loss = 0
-        if accelerator.is_main_process:
-            progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", disable=not accelerator.is_local_main_process)
-        else:
-            progress_bar = None
+        progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", disable=not accelerator.is_local_main_process)
 
         for batch in progress_bar:
             optimizer.zero_grad()
@@ -84,8 +81,7 @@ def main():
             optimizer.step()
             total_loss += loss.item()
 
-            if accelerator.is_main_process:
-                progress_bar.set_postfix({'loss': total_loss / (progress_bar.n + 1), 'lr': optimizer.param_groups[0]['lr']})
+            progress_bar.set_postfix({'loss': total_loss / (progress_bar.n + 1), 'lr': optimizer.param_groups[0]['lr']})
 
         # 검증 단계 (옵션)
         model.eval()
