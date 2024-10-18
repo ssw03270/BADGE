@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--weight_decay', type=float, default=0.02, required=False, help='Weight decay.')
     parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
+    parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     args = parser.parse_args()
 
     accelerator = Accelerator()
