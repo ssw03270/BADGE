@@ -85,7 +85,7 @@ class TransformerEncoder(nn.Module):
         enc_input = x + self.pos_enc(x).expand(x.shape[0], -1, -1)
         enc_output = self.dropout(enc_input)
 
-        for enc_layer, upsample in zip(self.layer_stack, self.upsample_layers):
+        for enc_layer in self.layer_stack:
             enc_output = enc_layer(enc_output, enc_mask, condition)
 
         return enc_output
