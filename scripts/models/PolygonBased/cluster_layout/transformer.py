@@ -116,13 +116,13 @@ class Transformer(nn.Module):
         Processes coords features with attention mechanisms and positional encoding.
         """
         x = self.encoding(batch)
-        enc_output = self.encoder(x, mode='enc')
+        enc_output = self.encoder(x)
 
         enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
         z, vq_loss, perplexity = self.vq(enc_output)
         z = z.expand(-1, x.size(1), -1)  # (batch, seq length, feature dim)으로 복제
 
-        dec_output = self.decoder(z, mode='dec')
+        dec_output = self.decoder(z)
 
         coords_output = self.coords_fc(dec_output)
         coords_output = torch.sigmoid(coords_output)
