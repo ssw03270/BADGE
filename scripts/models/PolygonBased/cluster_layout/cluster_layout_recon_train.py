@@ -17,8 +17,8 @@ def main():
     parser = argparse.ArgumentParser(description='Train the Transformer model.')
     parser.add_argument('--num_epochs', type=int, default=2000, required=False, help='Number of training epochs.')
     parser.add_argument('--save_epoch', type=int, default=10, required=False, help='Number of save epoch.')
-    parser.add_argument('--train_batch_size', type=int, default=256, required=False, help='Batch size for training.')
-    parser.add_argument('--val_batch_size', type=int, default=256, required=False, help='Batch size for validation.')
+    parser.add_argument('--train_batch_size', type=int, default=512, required=False, help='Batch size for training.')
+    parser.add_argument('--val_batch_size', type=int, default=512, required=False, help='Batch size for validation.')
     parser.add_argument('--lr', type=float, default=0.00001, required=False, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=0.02, required=False, help='Weight decay.')
     parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     args = parser.parse_args()
 
-    accelerator = Accelerator()
+    accelerator = Accelerator(find_unused_parameters=True)  # 여기서 설정
     device = accelerator.device
     set_seed(42)
 
@@ -55,6 +55,8 @@ def main():
     # Accelerator 준비
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)
     val_dataloader = accelerator.prepare(val_dataloader)
+
+    best_val_loss = float('inf')
 
     # 학습 루프
     for epoch in range(args.num_epochs):
@@ -112,5 +114,11 @@ def main():
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
 
+        # 최저 검증 손실 모델 저장
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_model_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/best_model.pt"
+            os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
+            torch.save(unwrapped_model.state_dict(), best_model_dir)
 if __name__ == "__main__":
     main()
