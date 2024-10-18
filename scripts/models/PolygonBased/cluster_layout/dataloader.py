@@ -20,7 +20,7 @@ class ClusterLayoutDataset(Dataset):
         self.data_type = data_type
 
         self.folder_path = f'F:/City_Team/COHO/data_with_cluster'
-        self.folder_path = f'/data/ssw03270/datasets/CITY2024/COHO_dataset'
+        self.folder_path = f'/data/rhosunr99/datasets/CITY2024/COHO_dataset'
         subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))]
         datasets = []
         for subfolder in tqdm(subfolders):
