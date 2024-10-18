@@ -106,7 +106,7 @@ def main():
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
-            save_dir = "vq_model_chekcpoints/checkpoint_epoch_{}".format(epoch+1)
+            save_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/checkpoint_epoch_{epoch+1}"
             os.makedirs(save_dir, exist_ok=True)
             accelerator.wait_for_everyone()
             unwrapped_model = accelerator.unwrap_model(model)
