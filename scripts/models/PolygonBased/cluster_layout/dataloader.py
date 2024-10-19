@@ -7,7 +7,7 @@ import random
 from tqdm import tqdm
 
 class ClusterLayoutDataset(Dataset):
-    def __init__(self, data_type='train'):
+    def __init__(self, data_type='train', user_name='ssw03270'):
         """
         Initializes an instance of the ClusterLayoutDataset class.
 
@@ -20,7 +20,7 @@ class ClusterLayoutDataset(Dataset):
         self.data_type = data_type
 
         self.folder_path = f'F:/City_Team/COHO/data_with_cluster'
-        self.folder_path = f'/data/rhosunr99/datasets/CITY2024/COHO_dataset'
+        self.folder_path = f'/data/{user_name}/datasets/CITY2024/COHO_dataset'
         subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))]
         datasets = []
         for subfolder in tqdm(subfolders):

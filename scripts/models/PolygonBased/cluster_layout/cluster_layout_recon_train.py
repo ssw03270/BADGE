@@ -15,6 +15,7 @@ from transformer import Transformer
 # 학습 코드
 def main():
     parser = argparse.ArgumentParser(description='Train the Transformer model.')
+    parser.add_argument('--user_name', type=str, default="ssw03270", required=False, help='User name.')
     parser.add_argument('--num_epochs', type=int, default=2000, required=False, help='Number of training epochs.')
     parser.add_argument('--save_epoch', type=int, default=10, required=False, help='Number of save epoch.')
     parser.add_argument('--train_batch_size', type=int, default=512, required=False, help='Batch size for training.')
@@ -31,10 +32,10 @@ def main():
     set_seed(42)
 
     # 데이터셋 로드
-    train_dataset = ClusterLayoutDataset(data_type="train")
+    train_dataset = ClusterLayoutDataset(data_type="train", user_name=args.user_name)
     train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
     
-    val_dataset = ClusterLayoutDataset(data_type="val")
+    val_dataset = ClusterLayoutDataset(data_type="val", user_name=args.user_name)
     val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, shuffle=False)
 
     # 모델 초기화
