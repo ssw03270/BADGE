@@ -33,8 +33,6 @@ class ClusterLayoutDataset(Dataset):
             dataset = [list(d['cluster_id2trans_layout_list'].values()) for d in data if 'cluster_id2trans_layout_list' in d]
             dataset = [cluster for boundary in dataset for cluster in boundary]
             datasets += dataset
-
-            break
         
         # 패딩할 최대 빌딩 개수
         MAX_BUILDINGS = 10
