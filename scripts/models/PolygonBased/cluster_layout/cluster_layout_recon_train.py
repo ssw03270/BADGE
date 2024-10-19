@@ -57,6 +57,7 @@ def main():
     val_dataloader = accelerator.prepare(val_dataloader)
 
     best_val_loss = float('inf')
+    best_epoch = 0
 
     # 학습 루프
     for epoch in range(args.num_epochs):
@@ -113,16 +114,19 @@ def main():
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
             save_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/checkpoint_epoch_{epoch+1}"
             os.makedirs(save_dir, exist_ok=True)
-            accelerator.wait_for_everyone()
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
 
         # 최저 검증 손실 모델 저장
         if accelerator.is_main_process and val_loss < best_val_loss:
             best_val_loss = val_loss
+            best_epoch = epoch + 1
             best_model_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)
+
+            print(f"Validation Loss: {best_val_loss / len(val_dataloader)}, Epoch: {best_epoch}")
+
 if __name__ == "__main__":
     main()
