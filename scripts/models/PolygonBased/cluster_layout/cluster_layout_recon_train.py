@@ -1,3 +1,4 @@
+import wandb
 import os
 import argparse
 import numpy as np
@@ -30,6 +31,14 @@ def main():
     accelerator = Accelerator()  # 여기서 설정
     device = accelerator.device
     set_seed(42)
+
+    if accelerator.is_main_process:
+        wandb.init(
+            project="codebook_train",  # Replace with your WandB project name
+            config=vars(args),            # Logs all hyperparameters
+            name=f"run_dmodel_{args.d_model}_cb_{args.codebook_size}",  # Optional: Name your run
+            save_code=True                # Optional: Save your code with the run
+        )
 
     # 데이터셋 로드
     train_dataset = ClusterLayoutDataset(data_type="train", user_name=args.user_name)
@@ -84,6 +93,11 @@ def main():
 
             progress_bar.set_postfix({'loss': total_loss / (progress_bar.n + 1), 'lr': optimizer.param_groups[0]['lr']})
 
+        # Log training loss to WandB
+        if accelerator.is_main_process:
+            avg_train_loss = total_loss / len(train_dataloader)
+            wandb.log({"epoch": epoch + 1, "train_loss": avg_train_loss})
+
         # 검증 단계 (옵션)
         model.eval()
         val_loss = 0
@@ -106,9 +120,21 @@ def main():
                     val_loss_vq += vq_loss
 
         if accelerator.is_main_process:
-            print(f"Validation Loss: {val_loss / len(val_dataloader)}")
-            print(f"Validation Coords Loss: {val_loss_coords / len(val_dataloader)}")
-            print(f"Validation VQ Loss: {val_loss_vq / len(val_dataloader)}")
+            avg_val_loss = val_loss / len(val_dataloader)
+            avg_val_coords = val_loss_coords / len(val_dataloader)
+            avg_val_vq = val_loss_vq / len(val_dataloader) if vq_loss is not None else None
+
+            wandb.log({
+                "validation_loss": avg_val_loss,
+                "validation_coords_loss": avg_val_coords,
+                "validation_vq_loss": avg_val_vq,
+                "epoch": epoch + 1
+            })
+
+            print(f"Validation Loss: {avg_val_loss}")
+            print(f"Validation Coords Loss: {avg_val_coords}")
+            if avg_val_vq is not None:
+                print(f"Validation VQ Loss: {avg_val_vq}")
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
