@@ -33,6 +33,7 @@ def main():
     set_seed(42)
 
     if accelerator.is_main_process:
+        wandb.login(key=['0f272b4978c0b450c3765b24b8abd024d7799e80'])
         wandb.init(
             project="codebook_train",  # Replace with your WandB project name
             config=vars(args),            # Logs all hyperparameters
