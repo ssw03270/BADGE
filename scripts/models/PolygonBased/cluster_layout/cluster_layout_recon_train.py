@@ -82,7 +82,6 @@ def main():
             coords_output, vq_loss, perplexity = model(batch)
 
             loss_coords = F.mse_loss(coords_output, batch.clone())
-            print(batch.clone())
             if vq_loss is not None:
                 loss = loss_coords + vq_loss
             else:
