@@ -59,7 +59,7 @@ class ClusterLayoutDataset(Dataset):
         load_func = partial(load_pickle_file_with_cache, folder_path=self.folder_path)
 
         # Use ProcessPoolExecutor.map for ordered loading
-        with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        with ProcessPoolExecutor(max_workers=8) as executor:
             # Map returns results in the order of subfolders
             results = list(tqdm(executor.map(load_func, subfolders), total=len(subfolders), desc="Loading pickle files with caching"))
             for result in results:
