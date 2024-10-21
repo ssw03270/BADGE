@@ -165,3 +165,6 @@ scripts/token.py
 *.pkl
 *.png
 .idea
+/inference_outputs
+/visualizations
+/vq_model_chekcpoints

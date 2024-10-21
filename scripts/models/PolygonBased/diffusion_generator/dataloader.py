@@ -26,7 +26,7 @@ def load_pickle_file_with_cache(subfolder, folder_path):
     try:
         with open(file_path, 'rb') as f:
             data = pickle.load(f)
-        dataset = [list(d['cluster_id22normalized_bldg_layout_cluster_list'].values()) for d in data if 'cluster_id22normalized_bldg_layout_cluster_list' in d]
+        dataset = [list(d['cluster_id2trans_layout_list'].values()) for d in data if 'cluster_id2trans_layout_list' in d]
         dataset = [cluster for boundary in dataset for cluster in boundary]
         return dataset
     except Exception as e:
@@ -34,23 +34,23 @@ def load_pickle_file_with_cache(subfolder, folder_path):
         return []
 
 
-class ClusterLayoutDataset(Dataset):
+class DiffusionGeneratorDataset(Dataset):
     def __init__(self, data_type='train', user_name='ssw03270'):
         """
-        Initializes an instance of the ClusterLayoutDataset class.
+        Initializes an instance of the DiffusionGeneratorDataset class.
 
         Parameters:
         - data_type (str): Specifies the type of the data ('train', 'test', 'val'), which determines the folder from which data is loaded.
         """
 
-        super(ClusterLayoutDataset, self).__init__()
+        super(DiffusionGeneratorDataset, self).__init__()
 
         self.data_type = data_type
 
         if data_type == 'test':
-            self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
+            self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/COHO_dataset'
         else:
-            self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
+            self.folder_path = f'/data/{user_name}/datasets/CITY2024/COHO_dataset'
         subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))]
 
         datasets = []

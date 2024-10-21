@@ -8,7 +8,7 @@ from accelerate import Accelerator
 from accelerate.utils import set_seed
 from tqdm.auto import tqdm
 
-from dataloader import ClusterLayoutDataset
+from dataloader import DiffusionGeneratorDataset
 from transformer import Transformer
 
 import matplotlib.pyplot as plt
@@ -64,7 +64,7 @@ def main():
     os.makedirs(args.output_dir + '/' + model_name, exist_ok=True)
 
     # Load test dataset
-    test_dataset = ClusterLayoutDataset(data_type="test")
+    test_dataset = DiffusionGeneratorDataset(data_type="test")
     test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers)
 
     # Initialize the model architecture (ensure it matches the training setup)

@@ -1,54 +1,107 @@
-import matplotlib.pyplot as plt
-
 import os
 import pickle
-import numpy as np
 from tqdm import tqdm
-from pyproj import Proj, transform
-from shapely.affinity import rotate
-from shapely.affinity import translate
-from shapely.ops import unary_union
-from shapely.geometry import Polygon
+import multiprocessing
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 
-UNIT_LENGTH = 1
+# Define the dataset path
+dataset_path = "Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/COHO_dataset"
 
-dataset_path = "E:/Resources/COHO/Our_Dataset"
-output_dir_path = "E:/Resources/COHO"
-subfolders = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f))]
+# Initialize debug flag
+debug = False
 
-n_coords = []
-for folder in subfolders:
-    output_path = os.path.join(output_dir_path, 'NormalizedBuildings', folder)  # output 경로 설정
-    os.makedirs(output_path, exist_ok=True)  # output 디렉토리 생성
+def process_folder(folder):
+    """
+    Process a single folder to extract cluster counts.
 
-    data_path = os.path.join(dataset_path, folder, f'graph/{folder}_graph_prep_list.pkl')
+    Args:
+        folder (str): The name of the folder to process.
+
+    Returns:
+        dict or None: A dictionary with folder name as key and list of cluster counts as value,
+                      or None if the data file does not exist.
+    """
+    data_path = os.path.join(dataset_path, folder, f'graph/{folder}_graph_prep_list_with_clusters.pkl')
     if not os.path.exists(data_path):
         print(f"{data_path} 파일이 존재하지 않습니다. 건너뜁니다.")
-        continue  # 다음 폴더로 넘어감
+        return None  # Return None if the file doesn't exist
 
     with open(data_path, 'rb') as f:
-        data_list = pickle.load(f)
+        try:
+            data_list = pickle.load(f)
+        except Exception as e:
+            print(f"Error loading {data_path}: {e}")
+            return None
+
+    print(f"{folder} 파일을 처리하는 중입니다.")
+    cluster_count = []
+    for data in tqdm(data_list, desc=f"Processing {folder}"):
+        hierarchical_clustering_k_10_debug = data.get('hierarchical_clustering_k_10_debug', [])
+        cluster_count.append(len(hierarchical_clustering_k_10_debug))
+    return {folder: cluster_count}  # Return a dictionary for clarity
+
+def main():
+    """
+    Main function to process all folders in parallel and collect results.
+
+    Returns:
+        list: A list of dictionaries containing cluster counts per folder.
+    """
+    # Get list of subfolders
+    subfolders = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f))]
+    results = []
     
-    for data in tqdm(data_list):
-        if not 'bldg_poly_list' in data:
-            continue
+    # Determine the number of processes (you can adjust this as needed)
+    num_processes = min(4, os.cpu_count() or 1)
+    
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        # Use imap_unordered for potentially better performance and to handle results as they come in
+        for result in pool.imap_unordered(process_folder, subfolders):
+            if result is not None:
+                results.append(result)
+    return results
+
+if __name__ == "__main__":
+    # It's good practice to redefine subfolders inside the main block to avoid issues on Windows
+    subfolders = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f))]
+    all_results = main()
+    
+    # Example: Print the results
+    for folder_result in all_results:
+        for folder, counts in folder_result.items():
+            print(f"Folder: {folder}, Cluster Counts: {counts}")
+    
+    # Aggregate all cluster counts into a single list
+    aggregated_counts = []
+    for folder_result in all_results:
+        for counts in folder_result.values():
+            aggregated_counts.extend(counts)
+    
+    # Check if there are any counts to process
+    if not aggregated_counts:
+        print("No cluster counts available to analyze.")
+    else:
+        # Convert to numpy array for easier computation
+        counts_array = np.array(aggregated_counts)
         
-        bldg_poly_list = data['bldg_poly_list']
-        for bldg_poly_data in bldg_poly_list:
-            bldg_id = bldg_poly_data[0]
-            bldg_poly = bldg_poly_data[1]
-            bldg_coords = [list(coord) for coord in bldg_poly.exterior.coords]
-            n_coords.append(len(bldg_coords))
-
-avg_coords = np.mean(n_coords)
-min_coords = np.min(n_coords)
-max_coords = np.max(n_coords)
-print(f"평균: {avg_coords}, 최소: {min_coords}, 최대: {max_coords}")
-
-# n_coords에 대한 히스토그램 그리기
-plt.hist(n_coords, bins=100, color='blue', alpha=0.7)
-plt.title('Building Coordinates Histogram')
-plt.xlabel('Number of Coordinates')
-plt.ylabel('Frequency')
-plt.grid(axis='y', alpha=0.75)
-plt.show()  # 히스토그램 표시
+        # Calculate statistics
+        max_count = counts_array.max()
+        min_count = counts_array.min()
+        mean_count = counts_array.mean()
+        
+        print("\nCluster Counts Statistics:")
+        print(f"Maximum Cluster Count: {max_count}")
+        print(f"Minimum Cluster Count: {min_count}")
+        print(f"Mean Cluster Count: {mean_count:.2f}")
+        
+        # Plot the distribution using seaborn
+        plt.figure(figsize=(10, 6))
+        sns.histplot(counts_array, bins=30, kde=True, color='skyblue')
+        plt.title('Distribution of Cluster Counts')
+        plt.xlabel('Cluster Count')
+        plt.ylabel('Frequency')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
