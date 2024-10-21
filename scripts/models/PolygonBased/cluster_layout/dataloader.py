@@ -19,7 +19,7 @@ def load_pickle_file_with_cache(subfolder, folder_path):
     Returns:
     - list: A list of clusters extracted from the pickle file.
     """
-    file_path = os.path.join(folder_path, subfolder, f'graph/{subfolder}_graph_prep_list_with_clusters_detail.pkl')
+    file_path = os.path.join(folder_path, subfolder, f'train_codebook/{subfolder}_graph_prep_list_with_clusters_detail.pkl')
     if not os.path.exists(file_path):
         return []
     
