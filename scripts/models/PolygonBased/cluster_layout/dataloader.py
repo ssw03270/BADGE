@@ -26,7 +26,7 @@ def load_pickle_file_with_cache(subfolder, folder_path):
     try:
         with open(file_path, 'rb') as f:
             data = pickle.load(f)
-        dataset = [list(d['cluster_id22normalized_bldg_layout_cluster_list'].values()) for d in data if 'cluster_id22normalized_bldg_layout_cluster_list' in d]
+        dataset = [list(d['cluster_id2padded_normalized_bldg_layout_cluster_list'].values()) for d in data if 'cluster_id2padded_normalized_bldg_layout_cluster_list' in d]
         dataset = [cluster for boundary in dataset for cluster in boundary]
         return dataset
     except Exception as e:
@@ -65,40 +65,11 @@ class ClusterLayoutDataset(Dataset):
             for result in results:
                 datasets += result
 
-        
-        # 패딩할 최대 빌딩 개수
-        MAX_BUILDINGS = 10
-        PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
-
-        # NumPy 배열로 변환
-        # 우선 빌딩 개수가 다른 리스트를 객체 배열로 만듭니다
-        data_np = np.empty(len(datasets), dtype=object)
-        for i, cluster_boundary in enumerate(datasets):
-            data_np[i] = np.array(cluster_boundary)
-
-        # 패딩 수행
-        padded_data_np = []
-
-        for cluster_boundary in tqdm(data_np):
-            current_building_count = cluster_boundary.shape[0]
-            if current_building_count < MAX_BUILDINGS:
-                padding_needed = MAX_BUILDINGS - current_building_count
-                # 패딩할 배열 생성
-                padding_array = np.array([PADDING_BUILDING] * padding_needed)
-                # 패딩된 배열 결합
-                cluster_boundary_padded = np.vstack((cluster_boundary, padding_array))
-            else:
-                # 빌딩 개수가 이미 최대인 경우 필요시 자름
-                cluster_boundary_padded = cluster_boundary[:MAX_BUILDINGS]
-            padded_data_np.append(cluster_boundary_padded)
-
-        # 최종 배열로 변환 (모든 클러스터-바운더리가 동일한 크기를 가짐)
-        final_padded_data = np.stack(padded_data_np)
-
+        datasets = np.array(datasets)
         # Shuffle the pkl files to ensure random split
-        shuffled_indices = np.random.permutation(final_padded_data.shape[0])
-        final_padded_data_shuffled = final_padded_data[shuffled_indices]
-        self.dataset = final_padded_data_shuffled
+        shuffled_indices = np.random.permutation(datasets.shape[0])
+        datasets_shuffled = datasets[shuffled_indices]
+        self.dataset = datasets_shuffled
 
         # Compute the split sizes
         total_files = len(self.dataset)

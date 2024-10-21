@@ -127,14 +127,24 @@ def make_valid(geom):
     return geom
 
 def normalize_coords_uniform(coords, min_coords=None, range_max=None):
-    if not min_coords is None and not range_max is None:
-        return (coords - min_coords) / range_max, min_coords, range_max
+    if min_coords is not None and range_max is not None:
+        normalized_coords = (coords - min_coords) / range_max
+    else:
+        coords = np.array(coords)
+        min_coords = coords.min(axis=0)
+        max_coords = coords.max(axis=0)
+        range_max = (max_coords - min_coords).max()
+        normalized_coords = (coords - min_coords) / range_max
     
-    coords = np.array(coords)
-    min_coords = coords.min(axis=0)
-    max_coords = coords.max(axis=0)
-    range_max = (max_coords - min_coords).max()
-    return (coords - min_coords) / range_max, min_coords, range_max
+    out_of_bounds = []
+    # 정규화된 좌표가 0과 1 사이에 있는지 확인
+    if not (np.all(normalized_coords >= -1) and np.all(normalized_coords <= 2)):
+        print("경고: 정규화된 좌표 중 일부가 0과 1 사이에 있지 않습니다.")
+        # 추가로, 어떤 좌표가 범위를 벗어났는지 출력할 수 있습니다.
+        out_of_bounds = normalized_coords[(normalized_coords < -1) | (normalized_coords > 2)]
+        print("범위를 벗어난 좌표 값:", out_of_bounds)
+    
+    return normalized_coords, min_coords, range_max, out_of_bounds
 
 def get_minimum_bounding_rectangle(coords):
     """폴리곤의 최소 경계 사각형을 계산합니다."""
@@ -241,9 +251,9 @@ debug = False
 def process_folder(folder):
     error_count = 0
     output_path = os.path.join(output_dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_with_clusters_detail.pkl')
-    if os.path.exists(output_path):
-        print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
-        return  # 이미 처리된 경우 건너뜁니다.
+    # if os.path.exists(output_path):
+    #     print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
+    #     return  # 이미 처리된 경우 건너뜁니다.
     
     os.makedirs(os.path.join(output_dataset_path, folder, f'preprocessed/'), exist_ok=True)  # output 디렉토리 생성
 
@@ -259,6 +269,8 @@ def process_folder(folder):
     new_data_list = []
     for data in tqdm(data_list):
         try:
+            is_stop = False
+
             hierarchical_clustering_list = data['hierarchical_clustering_k_10_debug']
             # hierarchical_clustering_list = data['RoadNetwork_k_10']
             blk_recover_poly = data['blk_recover_poly']
@@ -274,30 +286,35 @@ def process_folder(folder):
             blk_centroid = blk_polygon.centroid
             blk_angle = get_rotation_angle(list(blk_polygon.exterior.coords))
             rotated_blk = rotate(blk_polygon, -blk_angle, origin=blk_centroid, use_radians=False)
-            normalized_blk, min_coords, range_max = normalize_coords_uniform(rotated_blk.exterior.coords)
+            normalized_blk, min_coords, range_max, out_of_bounds = normalize_coords_uniform(rotated_blk.exterior.coords)
             normalized_blk = Polygon(normalized_blk)
+
+            if len(out_of_bounds) > 0:
+                is_stop = True
 
             normalized_bldg_list_blk = []
             for bldg_poly in bldg_poly_list:
                 bldg_id = bldg_poly[0]
                 rotated_bldg = rotate(bldg_poly[5], -blk_angle, origin=blk_centroid, use_radians=False)
-                normalized_bldg, _, _ = normalize_coords_uniform(rotated_bldg.exterior.coords, min_coords, range_max)
+                normalized_bldg, _, _, out_of_bounds = normalize_coords_uniform(rotated_bldg.exterior.coords, min_coords, range_max)
                 normalized_bldg = Polygon(normalized_bldg)
                 normalized_bldg_list_blk.append([bldg_id, normalized_bldg])
 
+                if len(out_of_bounds) > 0:
+                    is_stop = True
+
             rotated_midaxis = rotate(midaxis, -blk_angle, origin=blk_centroid, use_radians=False)
-            normalized_midaxis, _, _ = normalize_coords_uniform(rotated_midaxis.coords, min_coords, range_max)
+            normalized_midaxis, _, _, out_of_bounds = normalize_coords_uniform(rotated_midaxis.coords, min_coords, range_max)
             normalized_midaxis = LineString(normalized_midaxis)
+
+            if len(out_of_bounds) > 0:
+                is_stop = True
 
             blk_polygon = normalized_blk
             bldg_poly_list = normalized_bldg_list_blk
             midaxis = normalized_midaxis
             midaxis_start = Point(midaxis.coords[0])
             midaxis_end = Point(midaxis.coords[-1])
-
-            cluster_id_list = []
-            for cluster_id in range(len(hierarchical_clustering_list) + 1):
-                cluster_id_list.append(cluster_id)
 
             bldg_id2normalized_bldg_poly_blk = {}
             bldg_id2normalized_bldg_layout_blk = {}
@@ -364,38 +381,10 @@ def process_folder(folder):
             connecting_lines_blk_to_med = remove_duplicate_lines(connecting_lines_blk_to_med)
             region_polygons = list(polygonize(medaxis_lines + blk_lines + connecting_lines_blk_to_med))
 
-            bldg_multi_polygon_list = []
-            for cluster in hierarchical_clustering_list:
-                bldg_multi_polygon = []
-                for bldg_id in cluster:
-                    bldg_multi_polygon.append(bldg_id2normalized_bldg_poly_blk[bldg_id])
-                bldg_multi_polygon_list.append(MultiPolygon(bldg_multi_polygon))
-
-            max_cluster_indices = []
-            for region in region_polygons:
-                overlaps = []
-                fixed_region = make_valid(region)
-                for bldg_multi in bldg_multi_polygon_list:
-                    # MultiPolygon의 각 폴리곤과 교차 여부 확인
-                    overlap_area = 0
-                    for bldg in bldg_multi.geoms:
-                        fixed_bldg = make_valid(bldg)
-                        try:
-                            intersection = fixed_region.intersection(fixed_bldg)
-                            overlap_area += intersection.area
-                        except Exception as e:
-                            print(f"Intersection 오류 발생: {e}")
-                            continue
-                    overlaps.append(overlap_area)
-                if overlaps:
-                    max_overlap = max(overlaps)
-                    if max_overlap > 0:
-                        max_cluster_index = overlaps.index(max_overlap) + 1
-                    else:
-                        max_cluster_index = 0
-                else:
-                    max_cluster_index = 0
-                max_cluster_indices.append(max_cluster_index)
+            region_id2region_polygon = {}
+            for region_id, region_poly in enumerate(region_polygons):
+                region_id2region_polygon[region_id] = region_poly
+                            
 
             union_polygons = unary_union(region_polygons)
             intersection = blk_polygon.intersection(union_polygons)
@@ -405,53 +394,74 @@ def process_folder(folder):
             # 비율 계산
             ratio = intersection_area / area_a
 
-            if ratio < 0.99 or ratio > 1.01 or len(region_polygons) != len(max_cluster_indices):
+            if ratio < 0.99 or ratio > 1.01:
                 continue
-
-            region_id2region_polygon = {}
-            region_id_list = []
-            for region_id, region_poly in enumerate(region_polygons):
-                region_id2region_polygon[region_id] = region_poly
-                region_id_list.append(region_id)
             
-            region_id2cluster_id = {}
+            region_id2cluster_id_list = {}
             cluster_id2region_id_list = {}
-            for region_id, cluster_id in enumerate(max_cluster_indices):
-                region_id2cluster_id[region_id] = cluster_id
-                if cluster_id in cluster_id2region_id_list:
-                    cluster_id2region_id_list[cluster_id].append(region_id)
-                else:
-                    cluster_id2region_id_list[cluster_id] = [region_id]
-            
-            cluster_id2region_bbox = {}
-            for cluster_id, _region_id_list in cluster_id2region_id_list.items():
+            for region_id, region_poly in region_id2region_polygon.items():
+                for cluster_id, bldg_id_list in cluster_id2bldg_id_list.items():
+                    for bldg_id in bldg_id_list:
+                        bldg_poly = bldg_id2normalized_bldg_poly_blk[bldg_id]
+                        if region_poly.intersection(bldg_poly):
+                            if cluster_id in cluster_id2region_id_list:
+                                if not region_id in cluster_id2region_id_list[cluster_id]:
+                                    cluster_id2region_id_list[cluster_id].append(region_id)
+                            else:
+                                cluster_id2region_id_list[cluster_id] = [region_id]
+                            if region_id in region_id2cluster_id_list:
+                                if not cluster_id in region_id2cluster_id_list[region_id]:
+                                    region_id2cluster_id_list[region_id].append(cluster_id)
+                            else:
+                                region_id2cluster_id_list[region_id] = [cluster_id]
+                if region_id not in region_id2cluster_id_list:
+                    region_id2cluster_id_list[region_id] = [0]
+                    if 0 in cluster_id2region_id_list:
+                        cluster_id2region_id_list[0].append(region_id)
+                    else:
+                        cluster_id2region_id_list[0] = [region_id]
+                        
+            cluster_id2cluster_bbox = {}
+            for cluster_id, region_id_list in cluster_id2region_id_list.items():
                 region_poly_list = []
-                for region_id in _region_id_list:
+                for region_id in region_id_list:
                     region_poly = region_id2region_polygon[region_id]
                     region_poly_list.append(region_poly)
                 
                 combined_region = unary_union(region_poly_list)
                 min_bbox = combined_region.bounds
                 bbox_poly = box(*min_bbox)
-                cluster_id2region_bbox[cluster_id] = bbox_poly
+                cluster_id2cluster_bbox[cluster_id] = bbox_poly
 
             bldg_id2normalized_bldg_poly_cluster = {}
             bldg_id2normalized_bldg_layout_cluster = {}
             for cluster_id, _bldg_id_list in cluster_id2bldg_id_list.items():
-                region_bbox = cluster_id2region_bbox[cluster_id]
+                cluster_bbox = cluster_id2cluster_bbox[cluster_id]
                 for bldg_id in _bldg_id_list:
                     normalized_bldg_poly_blk = bldg_id2normalized_bldg_poly_blk[bldg_id]
                     normalized_bldg_poly_layout = bldg_id2normalized_bldg_layout_blk[bldg_id]
 
-                    _, min_coords, range_max = normalize_coords_uniform(region_bbox.exterior.coords)
+                    _, min_coords, range_max, out_of_bounds = normalize_coords_uniform(cluster_bbox.exterior.coords)
 
-                    normalized_bldg_poly_cluster, _, _ = normalize_coords_uniform(normalized_bldg_poly_blk.exterior.coords, min_coords, range_max)
+                    if len(out_of_bounds) > 0:
+                        is_stop = True
+
+                    normalized_bldg_poly_cluster, _, _, out_of_bounds = normalize_coords_uniform(normalized_bldg_poly_blk.exterior.coords, min_coords, range_max)
                     normalized_bldg_poly_cluster = Polygon(normalized_bldg_poly_cluster)
+
+                    if len(out_of_bounds) > 0:
+                        is_stop = True
 
                     x, y, w, h, r = normalized_bldg_poly_layout
                     layout_poly = create_bounding_box(x, y, w, h, r)
-                    normalized_layout, _, _ = normalize_coords_uniform(layout_poly.exterior.coords, min_coords, range_max)
+                    normalized_layout, _, _, out_of_bounds = normalize_coords_uniform(layout_poly.exterior.coords, min_coords, range_max)
                     normalized_layout = Polygon(normalized_layout)
+
+                    if len(out_of_bounds) > 0:
+                        is_stop = True
+
+                    r = get_rotation_angle(list(normalized_layout.exterior.coords))
+                    normalized_layout = rotate(normalized_layout, -r, origin='centroid', use_radians=False)
 
                     minx, miny, maxx, maxy = normalized_layout.bounds
                     x = (minx + maxx) / 2
@@ -465,9 +475,8 @@ def process_folder(folder):
                     bldg_id2normalized_bldg_layout_cluster[bldg_id] = normalized_bldg_layout_cluster
 
             cluster_id2face_blk_linestring_list = {}
-            for cluster_id in cluster_id_list:
-                _region_id_list = cluster_id2region_id_list[cluster_id]
-                for region_id in _region_id_list:
+            for cluster_id, region_id_list in cluster_id2region_id_list.items():
+                for region_id in region_id_list:
                     region_poly = region_id2region_polygon[region_id]
                     exterior_coords = list(region_poly.exterior.coords)
 
@@ -496,6 +505,9 @@ def process_folder(folder):
                             else:
                                 cluster_id2face_blk_linestring_list[cluster_id] = [blk_line]
 
+            if is_stop:
+                continue
+
             new_data = data
             new_data['bldg_id2cluster_id'] = bldg_id2cluster_id
             new_data['bldg_id2normalized_bldg_poly_blk'] = bldg_id2normalized_bldg_poly_blk
@@ -503,10 +515,10 @@ def process_folder(folder):
             new_data['bldg_id2normalized_bldg_layout_blk'] = bldg_id2normalized_bldg_layout_blk
             new_data['bldg_id2normalized_bldg_layout_cluster'] = bldg_id2normalized_bldg_layout_cluster
             new_data['cluster_id2bldg_id_list'] = cluster_id2bldg_id_list
-            new_data['cluster_id2region_bbox'] = cluster_id2region_bbox
+            new_data['cluster_id2cluster_bbox'] = cluster_id2cluster_bbox
             new_data['cluster_id2region_id_list'] = cluster_id2region_id_list
             new_data['cluster_id2face_blk_linestring_list'] = cluster_id2face_blk_linestring_list
-            new_data['region_id2cluster_id'] = region_id2cluster_id
+            new_data['region_id2cluster_id_list'] = region_id2cluster_id_list
             new_data['region_id2region_polygon'] = region_id2region_polygon
             new_data_list.append(new_data)
 
@@ -523,12 +535,12 @@ def process_folder(folder):
                     axs[0][0].plot(x, y)
 
                 colors = cm.get_cmap('tab20')(np.linspace(0, 1, len(hierarchical_clustering_list) + 1))
-                for region_id in region_id_list:
-                    cluster_id = region_id2cluster_id[region_id]
+                for region_id, cluster_id_list in region_id2cluster_id_list.items():
                     region_poly = region_id2region_polygon[region_id]
                     x, y = region_poly.exterior.coords.xy
-                    axs[0][1].plot(x, y, color=colors[cluster_id])
-                    axs[0][1].fill(x, y, alpha=0.5, color=colors[cluster_id])
+                    for cluster_id in cluster_id_list:
+                        axs[0][1].plot(x, y, color=colors[cluster_id])
+                        axs[0][1].fill(x, y, alpha=0.5, color=colors[cluster_id])
 
                 for cluster_id, _bldg_id_list in cluster_id2bldg_id_list.items():
                     if len(_bldg_id_list) > 0:
@@ -537,13 +549,11 @@ def process_folder(folder):
                             x, y = normalized_bldg_poly_blk.exterior.coords.xy
                             axs[0][1].plot(x, y, color=colors[cluster_id])
 
-                for cluster_id in cluster_id_list:
-                    region_bbox = cluster_id2region_bbox[cluster_id]
-                    x, y = region_bbox.exterior.coords.xy
+                for cluster_id, cluster_bbox in cluster_id2cluster_bbox.items():
+                    x, y = cluster_bbox.exterior.coords.xy
                     axs[0][1].plot(x, y, color=colors[cluster_id])
 
-                for cluster_id in cluster_id_list:
-                    face_blk_linestring_list = cluster_id2face_blk_linestring_list[cluster_id]
+                for cluster_id, face_blk_linestring_list in cluster_id2face_blk_linestring_list.items():
                     for face_blk_linestring in face_blk_linestring_list:
                         x, y = face_blk_linestring.coords.xy
                         axs[1][0].plot(x, y, color=colors[cluster_id])
