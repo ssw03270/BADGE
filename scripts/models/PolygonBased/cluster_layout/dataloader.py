@@ -59,12 +59,15 @@ class ClusterLayoutDataset(Dataset):
         load_func = partial(load_pickle_file_with_cache, folder_path=self.folder_path)
 
         # Use ProcessPoolExecutor.map for ordered loading
-        with ProcessPoolExecutor(max_workers=8) as executor:
+        with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
             # Map returns results in the order of subfolders
             results = list(tqdm(executor.map(load_func, subfolders), total=len(subfolders), desc="Loading pickle files with caching"))
             for result in results:
                 datasets += result
 
+        for data in datasets:
+            if(len(data)) is not 10:
+                print(len(data))
         datasets = np.array(datasets)
         # Shuffle the pkl files to ensure random split
         shuffled_indices = np.random.permutation(datasets.shape[0])
