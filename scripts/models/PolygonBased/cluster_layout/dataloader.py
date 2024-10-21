@@ -66,7 +66,7 @@ class ClusterLayoutDataset(Dataset):
                 datasets += result
 
         for data in datasets:
-            if(len(data)) is not 10:
+            if len(data) != 10:
                 print(len(data))
         datasets = np.array(datasets)
         # Shuffle the pkl files to ensure random split
