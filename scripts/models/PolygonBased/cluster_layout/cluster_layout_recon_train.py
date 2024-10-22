@@ -38,7 +38,7 @@ def main():
         wandb.init(
             project="codebook_train",  # Replace with your WandB project name
             config=vars(args),            # Logs all hyperparameters
-            name=f"run_dmodel_{args.d_model}_cb_{args.codebook_size}",  # Optional: Name your run
+            name=f"run_d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}",  # Optional: Name your run
             save_code=True                # Optional: Save your code with the run
         )
 
