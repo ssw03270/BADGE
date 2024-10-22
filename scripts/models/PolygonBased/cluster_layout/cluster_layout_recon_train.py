@@ -55,8 +55,9 @@ def main():
     dropout = 0.1
     commitment_cost = 0.25
     n_tokens = 10
+    sample_tokens = 10
     model = Transformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
-                        codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
+                        codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens, sample_tokens=sample_tokens)
 
     # 옵티마이저 및 스케줄러 설정
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
