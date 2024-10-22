@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--weight_decay', type=float, default=0.02, required=False, help='Weight decay.')
     parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
+    parser.add_argument('--sample_tokens', type=int, default=4, required=False, help='Number of sample tokens.')
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     args = parser.parse_args()
 
@@ -55,7 +56,7 @@ def main():
     dropout = 0.1
     commitment_cost = 0.25
     n_tokens = 10
-    sample_tokens = 10
+    sample_tokens = args.sample_tokens
     model = Transformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
                         codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens, sample_tokens=sample_tokens)
 
