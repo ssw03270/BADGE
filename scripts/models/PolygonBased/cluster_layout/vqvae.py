@@ -7,21 +7,22 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 class VectorQuantizer(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost, sample_tokens):
         super(VectorQuantizer, self).__init__()
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
         self.commitment_cost = commitment_cost
-        
-        # self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim)
-        self.embedding = nn.Embedding(self.num_embeddings, 1)
+        self.sample_tokens = sample_tokens
+
+        self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim // sample_tokens)
+        # self.embedding = nn.Embedding(self.num_embeddings, 1)
         self.embedding.weight.data.uniform_(-1/self.num_embeddings, 1/self.num_embeddings)
     
     def forward(self, inputs):
         # 입력을 (B, C, H, W)에서 (B*H*W, C)로 변환
         input_shape = inputs.shape
-        # flat_input = inputs.view(-1, self.embedding_dim)
-        flat_input = inputs.view(-1, 1)
+        flat_input = inputs.view(-1, self.embedding_dim // self.sample_tokens)
+        # flat_input = inputs.view(-1, 1)
         
         # 거리 계산
         distances = (torch.sum(flat_input**2, dim=1, keepdim=True)

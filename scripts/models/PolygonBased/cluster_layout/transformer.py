@@ -106,7 +106,7 @@ class Transformer(nn.Module):
         self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
 
-        self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost)
+        self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
 
         self.coords_fc = nn.Linear(d_model, self.n)
 
