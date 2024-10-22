@@ -1,9 +1,28 @@
 import torch
 import torch.nn as nn
+from torch import Tensor, LongTensor
+
 from module import ScaledDotProductAttention
 
+class AdaLayerNorm(nn.Module):
+    def __init__(self, dim: int, t_dim: int):
+        super().__init__()
+        self.gelu = nn.GELU()
+        self.linear = nn.Linear(t_dim, dim*2)
+        self.layernorm = nn.LayerNorm(dim, elementwise_affine=False)
+
+    def forward(self, x: Tensor, t_emb: Tensor):
+        emb: Tensor = self.linear(self.gelu(t_emb)).unsqueeze(1)
+        while emb.dim() < x.dim():
+            emb = emb.unsqueeze(1)
+
+        scale, shift = torch.chunk(emb, 2, dim=-1)
+        x = self.layernorm(x) * (1. + scale) + shift
+
+        return x
+    
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_head=8, d_model=512, dropout=0.1):
+    def __init__(self, n_head=8, d_model=512, dropout=0.1, t_dim=64):
         """
         Initializes the multi-head attention mechanism.
 
@@ -25,9 +44,9 @@ class MultiHeadAttention(nn.Module):
 
         self.attention = ScaledDotProductAttention(temperature=d_model // n_head ** 0.5)
         self.dropout = nn.Dropout(dropout)
-        self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
+        self.layer_norm = AdaLayerNorm(d_model, t_dim)
 
-    def forward(self, q, k, v, mask=None):
+    def forward(self, q, k, v, t, mask=None):
         """
         Forward pass for the multi-head attention mechanism.
 
@@ -39,7 +58,7 @@ class MultiHeadAttention(nn.Module):
         - Tensor: Output of the multi-head attention mechanism.
         """
 
-        q = self.layer_norm(q)
+        q = self.layer_norm(q, t)
         
         d_k, d_v, n_head = self.d_model // self.n_head, self.d_model // self.n_head, self.n_head
         sz_b, len_q, len_k, len_v = q.size(0), q.size(1), k.size(1), v.size(1)
@@ -64,7 +83,7 @@ class MultiHeadAttention(nn.Module):
         return q
 
 class PositionwiseFeedForward(nn.Module):
-    def __init__(self, d_model, d_inner, dropout=0.1):
+    def __init__(self, d_model, d_inner, dropout=0.1, t_dim=64):
         """
         Initializes the position-wise feed-forward layer.
 
@@ -77,10 +96,10 @@ class PositionwiseFeedForward(nn.Module):
         super().__init__()
         self.w1 = nn.Linear(d_model, d_inner)
         self.w2 = nn.Linear(d_inner, d_model)
-        self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
+        self.layer_norm = AdaLayerNorm(d_model, t_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, t):
         """
         Forward pass of the position-wise feed-forward layer.
 
@@ -91,7 +110,7 @@ class PositionwiseFeedForward(nn.Module):
         - Tensor: Output tensor of the feed-forward layer.
         """
 
-        x = self.layer_norm(x)
+        x = self.layer_norm(x, t)
         residual = x
         x = self.w1(x)
         x = torch.relu(x)

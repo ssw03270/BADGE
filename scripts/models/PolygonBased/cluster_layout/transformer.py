@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from layer import EncoderLayer, DecoderLayer
-from vqvae import VectorQuantizer, GumbelQuantize
+from layer import EncoderLayer
+from vqvae import VectorQuantizer
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_hid, n_node):
@@ -128,3 +128,12 @@ class Transformer(nn.Module):
         coords_output = torch.sigmoid(coords_output)
 
         return coords_output, vq_loss, perplexity
+
+    def get_encoding_indices(self, batch):
+        x = self.encoding(batch)
+        enc_output = self.encoder(x)
+
+        enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
+        encoding_indices = self.vq.get_encoding_indices(enc_output)
+
+        return encoding_indices

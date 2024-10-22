@@ -167,4 +167,4 @@ scripts/token.py
 .idea
 /inference_outputs
 /visualizations
-/vq_model_chekcpoints
+/vq_model_checkpoints

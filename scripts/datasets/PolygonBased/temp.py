@@ -7,7 +7,7 @@ import seaborn as sns
 import numpy as np
 
 # Define the dataset path
-dataset_path = "Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/COHO_dataset"
+dataset_path = "Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset"
 
 # Initialize debug flag
 debug = False
@@ -23,7 +23,7 @@ def process_folder(folder):
         dict or None: A dictionary with folder name as key and list of cluster counts as value,
                       or None if the data file does not exist.
     """
-    data_path = os.path.join(dataset_path, folder, f'graph/{folder}_graph_prep_list_with_clusters.pkl')
+    data_path = os.path.join(dataset_path, folder, f'train_codebook/{folder}_graph_prep_list_with_clusters_detail.pkl')
     if not os.path.exists(data_path):
         print(f"{data_path} 파일이 존재하지 않습니다. 건너뜁니다.")
         return None  # Return None if the file doesn't exist
@@ -38,8 +38,11 @@ def process_folder(folder):
     print(f"{folder} 파일을 처리하는 중입니다.")
     cluster_count = []
     for data in tqdm(data_list, desc=f"Processing {folder}"):
-        hierarchical_clustering_k_10_debug = data.get('hierarchical_clustering_k_10_debug', [])
-        cluster_count.append(len(hierarchical_clustering_k_10_debug))
+        cluster_id22normalized_bldg_layout_cluster_list = data.get('cluster_id22normalized_bldg_layout_cluster_list', [])
+        for cluster_id, normalized_bldg_layout_cluster_list in cluster_id22normalized_bldg_layout_cluster_list.items():
+            for bldg_layout in normalized_bldg_layout_cluster_list:
+                cluster_count += bldg_layout
+                
     return {folder: cluster_count}  # Return a dictionary for clarity
 
 def main():
@@ -67,12 +70,7 @@ if __name__ == "__main__":
     # It's good practice to redefine subfolders inside the main block to avoid issues on Windows
     subfolders = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f))]
     all_results = main()
-    
-    # Example: Print the results
-    for folder_result in all_results:
-        for folder, counts in folder_result.items():
-            print(f"Folder: {folder}, Cluster Counts: {counts}")
-    
+        
     # Aggregate all cluster counts into a single list
     aggregated_counts = []
     for folder_result in all_results:

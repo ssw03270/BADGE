@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 
 from dataloader import DiffusionGeneratorDataset
 from transformer import Transformer
+from diffusion import Diffusion
 
 # 학습 코드
 def main():
@@ -18,11 +19,13 @@ def main():
     parser.add_argument('--user_name', type=str, default="ssw03270", required=False, help='User name.')
     parser.add_argument('--num_epochs', type=int, default=2000, required=False, help='Number of training epochs.')
     parser.add_argument('--save_epoch', type=int, default=10, required=False, help='Number of save epoch.')
-    parser.add_argument('--train_batch_size', type=int, default=512, required=False, help='Batch size for training.')
-    parser.add_argument('--val_batch_size', type=int, default=512, required=False, help='Batch size for validation.')
+    parser.add_argument('--train_batch_size', type=int, default=4, required=False, help='Batch size for training.')
+    parser.add_argument('--val_batch_size', type=int, default=4, required=False, help='Batch size for validation.')
     parser.add_argument('--lr', type=float, default=0.00001, required=False, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=0.02, required=False, help='Weight decay.')
-    parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
+    parser.add_argument('--codebook_size', type=int, default=16, required=False, help='Codebook size.')
+    parser.add_argument('--codebook_dim', type=int, default=128, required=False, help='Codebook dimension.')
+    parser.add_argument('--cluster_count', type=int, default=22, required=False, help='Cluster count.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     args = parser.parse_args()
@@ -43,10 +46,8 @@ def main():
     n_layer = 4
     n_head = 8
     dropout = 0.1
-    commitment_cost = 0.25
-    n_tokens = 10
-    model = Transformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
-                        codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
+    model = Diffusion(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
+                        codebook_size=args.codebook_size, codebook_dim=args.codebook_dim, cluster_count=args.cluster_count)
 
     # 옵티마이저 및 스케줄러 설정
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -69,13 +70,11 @@ def main():
             optimizer.zero_grad()
 
             # 모델 Forward
-            coords_output, vq_loss, perplexity = model(batch)
+            indices_data = batch['indices_data']
+            masks_data = batch['masks_data']
+            vb_loss_x = model.compute_losses(indices_data, masks_data)
 
-            loss_coords = F.mse_loss(coords_output, batch.clone())
-            if vq_loss is not None:
-                loss = loss_coords + vq_loss
-            else:
-                loss = loss_coords
+            loss = vb_loss_x
 
             # 역전파 및 최적화
             accelerator.backward(loss)
@@ -87,32 +86,23 @@ def main():
         # 검증 단계 (옵션)
         model.eval()
         val_loss = 0
-        val_loss_coords = 0
-        val_loss_vq = 0
         with torch.no_grad():
             for batch in val_dataloader:
 
-                coords_output, vq_loss, perplexity = model(batch)
+                indices_data = batch['indices_data']
+                masks_data = batch['masks_data']
+                vb_loss_x = model.compute_losses(indices_data, masks_data)
 
-                loss_coords = F.mse_loss(coords_output, batch.clone())
-                if vq_loss is not None:
-                    loss =  loss_coords + vq_loss
-                else:
-                    loss = loss_coords
+                loss = vb_loss_x
 
                 val_loss += loss.item()
-                val_loss_coords += loss_coords
-                if vq_loss is not None:
-                    val_loss_vq += vq_loss
 
         if accelerator.is_main_process:
             print(f"Validation Loss: {val_loss / len(val_dataloader)}")
-            print(f"Validation Coords Loss: {val_loss_coords / len(val_dataloader)}")
-            print(f"Validation VQ Loss: {val_loss_vq / len(val_dataloader)}")
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
-            save_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/checkpoint_epoch_{epoch+1}"
+            save_dir = f"diffusion_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/checkpoint_epoch_{epoch+1}"
             os.makedirs(save_dir, exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
@@ -121,7 +111,7 @@ def main():
         if accelerator.is_main_process and val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch + 1
-            best_model_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/best_model.pt"
+            best_model_dir = f"diffusion_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)

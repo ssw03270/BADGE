@@ -91,8 +91,10 @@ class ClusterLayoutDataset(Dataset):
         # 최종 배열로 변환 (모든 클러스터-바운더리가 동일한 크기를 가짐)
         final_padded_data = np.stack(padded_data_np)
         # Shuffle the pkl files to ensure random split
+
         shuffled_indices = np.random.permutation(final_padded_data.shape[0])
         final_padded_data_shuffled = final_padded_data[shuffled_indices]
+
         self.dataset = final_padded_data_shuffled
 
         # Compute the split sizes

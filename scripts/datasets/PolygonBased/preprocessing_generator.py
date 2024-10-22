@@ -60,9 +60,9 @@ debug = False
 def process_folder(folder):
     error_count = 0
     output_path = os.path.join(dataset_path, folder, f'train_generator/{folder}_graph_prep_list_with_clusters_detail.pkl')
-    if os.path.exists(output_path):
-        print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
-        return  # 이미 처리된 경우 건너뜁니다.
+    # if os.path.exists(output_path):
+    #     print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
+    #     return  # 이미 처리된 경우 건너뜁니다.
     
     os.makedirs(os.path.join(dataset_path, folder, f'train_generator/'), exist_ok=True)  # output 디렉토리 생성
 
@@ -78,13 +78,8 @@ def process_folder(folder):
     for data in tqdm(data_list):
         cluster_id2region_id_list = data['cluster_id2region_id_list']
         region_id2region_polygon = data['region_id2region_polygon']
-        
-        cluster_id2region_bbox = data['cluster_id2region_bbox']
-        cluster_id2bldg_id_list = data['cluster_id2bldg_id_list']
-        bldg_id2normalized_bldg_layout_cluster = data['bldg_id2normalized_bldg_layout_cluster']
 
         cluster_id2cluster_mask = {}
-        blk_mask = np.zeros((64, 64))
         for cluster_id, region_id_list in cluster_id2region_id_list.items():
             cluster_image_mask = np.zeros((64, 64))
             for region_id in region_id_list:
@@ -93,25 +88,11 @@ def process_folder(folder):
                 # 마스크 생성
                 mask = create_mask(region_polygon, image_size=(64, 64))
                 cluster_image_mask += mask
-                blk_mask += mask
 
             cluster_id2cluster_mask[cluster_id] = cluster_image_mask
         
-        cluster_id22normalized_bldg_layout_cluster_list = {}
-        for cluster_id, bldg_id_list in cluster_id2bldg_id_list.items():
-            for bldg_id in bldg_id_list:
-                bldg_layout = bldg_id2normalized_bldg_layout_cluster[bldg_id]
-                x, y, w, h, r = bldg_layout
-                gt_bldg_layout = [x, y, w, h, r / 360, 1]
-
-                if cluster_id in cluster_id22normalized_bldg_layout_cluster_list:
-                    cluster_id22normalized_bldg_layout_cluster_list[cluster_id].append(gt_bldg_layout)
-                else:
-                    cluster_id22normalized_bldg_layout_cluster_list[cluster_id] = [gt_bldg_layout]
-
         new_data = data
         new_data['cluster_id2cluster_mask'] = cluster_id2cluster_mask
-        new_data['cluster_id22normalized_bldg_layout_cluster_list'] = cluster_id22normalized_bldg_layout_cluster_list
         
         new_data_list.append(new_data)
 

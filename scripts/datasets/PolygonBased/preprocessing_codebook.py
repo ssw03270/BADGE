@@ -7,26 +7,13 @@ Condition: block mask (채워진 거, 테두리), region mask (채널 별 클러
 Target: cluster bbox
 '''
 
-import matplotlib.pyplot as plt
 import multiprocessing
 from PIL import Image, ImageDraw
 
-import math
-import matplotlib.cm as cm
 import os
 import pickle
 import numpy as np
 from tqdm import tqdm
-from pyproj import Proj, transform
-from shapely.affinity import rotate
-from shapely.affinity import translate
-from shapely.ops import unary_union, split
-from shapely.geometry import Polygon, box, LineString, Point, MultiPolygon, GeometryCollection, MultiLineString
-from shapely.ops import polygonize, nearest_points
-import networkx as nx
-from collections import defaultdict
-from rtree import index
-import copy
 
 def create_mask(polygon, image_size=(64, 64)):
     """
@@ -64,9 +51,9 @@ debug = False
 def process_folder(folder):
     error_count = 0
     output_path = os.path.join(dataset_path, folder, f'train_codebook/{folder}_graph_prep_list_with_clusters_detail.pkl')
-    # if os.path.exists(output_path):
-    #     print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
-    #     return  # 이미 처리된 경우 건너뜁니다.
+    if os.path.exists(output_path):
+        print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
+        return  # 이미 처리된 경우 건너뜁니다.
     
     os.makedirs(os.path.join(dataset_path, folder, f'train_codebook/'), exist_ok=True)  # output 디렉토리 생성
 
@@ -82,9 +69,15 @@ def process_folder(folder):
     for data in tqdm(data_list):
         cluster_id2bldg_id_list = data['cluster_id2bldg_id_list']
         bldg_id2normalized_bldg_layout_cluster = data['bldg_id2normalized_bldg_layout_cluster']
+        hierarchical_clustering_list = data['hierarchical_clustering_k_10_debug']
+
+        for clustering in hierarchical_clustering_list:
+            if len(clustering) > 10:
+                print(len(clustering))
        
         cluster_id2normalized_bldg_layout_cluster_list = {}
         for cluster_id, bldg_id_list in cluster_id2bldg_id_list.items():
+                
             for bldg_id in bldg_id_list:
                 bldg_layout = bldg_id2normalized_bldg_layout_cluster[bldg_id]
                 x, y, w, h, r = bldg_layout
