@@ -72,7 +72,7 @@ class DiffusionGeneratorDataset(Dataset):
         else:
             self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
             self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
-        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))][:1]
+        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))]
 
         cluster_img_mask_datasets = []
         cluster_encoding_indices_datasets = []
@@ -81,7 +81,7 @@ class DiffusionGeneratorDataset(Dataset):
         load_func = partial(load_pickle_file_with_cache, folder_path=self.folder_path)
 
         # Use ProcessPoolExecutor.map for ordered loading
-        with ProcessPoolExecutor(max_workers=8) as executor:
+        with ProcessPoolExecutor(max_workers=4) as executor:
             # Map returns results in the order of subfolders
             results = list(tqdm(executor.map(load_func, subfolders), total=len(subfolders), desc="Loading pickle files with caching"))
             for result in results:
