@@ -31,7 +31,6 @@ class VectorQuantizer(nn.Module):
         
         # 가장 가까운 인덱스 찾기
         encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
-        print(encoding_indices.shape)
         encodings = torch.zeros(encoding_indices.size(0), self.num_embeddings, device=inputs.device)
         encodings.scatter_(1, encoding_indices, 1)
         
