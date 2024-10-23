@@ -68,7 +68,7 @@ def main():
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)
     val_dataloader = accelerator.prepare(val_dataloader)
 
-    bbox_loss_fn = nn.CrossEntropyLoss(reduction='none')
+    bbox_loss_fn = nn.CrossEntropyLoss()
     category_loss_fn = nn.BCEWithLogitsLoss()  # 이진 분류 손실 (카테고리)
 
     best_val_loss = float('inf')
@@ -94,13 +94,6 @@ def main():
             bbox_labels_flat = bbox_labels.view(-1)
             # CrossEntropyLoss 계산 (개별 손실)
             bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
-            # Reshape bbox_loss to (batch, num_objects, 5)
-            bbox_loss = bbox_loss.view(bbox_output.shape[0], n_tokens, 5)
-            # Apply mask: expand mask to (batch, num_objects, 5)
-            mask_expanded = mask.expand(-1, -1, 5)
-            bbox_loss = bbox_loss * mask_expanded
-            # 최종 bbox_loss는 배치와 객체에 따라 평균
-            bbox_loss = bbox_loss.sum() / mask_expanded.sum()
 
             # category_output: (batch, 10, 1) -> (batch * 10, 1)
             category_output_flat = category_output.view(-1, 1)
@@ -145,13 +138,6 @@ def main():
                 bbox_labels_flat = bbox_labels.view(-1)
                 # CrossEntropyLoss 계산 (개별 손실)
                 bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
-                # Reshape bbox_loss to (batch, num_objects, 5)
-                bbox_loss = bbox_loss.view(bbox_output.shape[0], n_tokens, 5)
-                # Apply mask: expand mask to (batch, num_objects, 5)
-                mask_expanded = mask.expand(-1, -1, 5)
-                bbox_loss = bbox_loss * mask_expanded
-                # 최종 bbox_loss는 배치와 객체에 따라 평균
-                bbox_loss = bbox_loss.sum() / mask_expanded.sum()
 
                 # category_output: (batch, 10, 1) -> (batch * 10, 1)
                 category_output_flat = category_output.view(-1, 1)
