@@ -127,6 +127,7 @@ class Transformer(nn.Module):
 
         Processes coords features with attention mechanisms and positional encoding.
         """
+        print(bbox)
         x, y, w, h, r, c = bbox[:, :, 0], bbox[:, :, 1], bbox[:, :, 2], bbox[:, :, 3], bbox[:, :, 4], category
         x = self.x_embed(x)
         y = self.y_embed(y)
