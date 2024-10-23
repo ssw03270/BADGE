@@ -140,12 +140,17 @@ def main():
                 bbox_output, category_output, vq_loss, perplexity = model(bbox_labels, category_labels)
 
                 bbox_output_flat = bbox_output.view(-1, 64)
-
-                # bbox_labels: (batch, 10, 5) -> (batch * 10 * 5)
-                bbox_labels_flat = bbox_labels.view(-1).long()
-
-                # CrossEntropyLoss 계산
+                # bbox_labels: (batch, num_objects, 5) -> (batch * num_objects * 5)
+                bbox_labels_flat = bbox_labels.view(-1)
+                # CrossEntropyLoss 계산 (개별 손실)
                 bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
+                # Reshape bbox_loss to (batch, num_objects, 5)
+                bbox_loss = bbox_loss.view(bbox_output.shape[0], n_tokens, 5)
+                # Apply mask: expand mask to (batch, num_objects, 5)
+                mask_expanded = mask.expand(-1, -1, 5)
+                bbox_loss = bbox_loss * mask_expanded
+                # 최종 bbox_loss는 배치와 객체에 따라 평균
+                bbox_loss = bbox_loss.sum() / mask.sum()
 
                 # category_output: (batch, 10, 1) -> (batch * 10, 1)
                 category_output_flat = category_output.view(-1, 1)
