@@ -14,14 +14,16 @@ class VectorQuantizer(nn.Module):
         self.commitment_cost = commitment_cost
         self.sample_tokens = sample_tokens
 
-        self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim // sample_tokens)
+        # self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim // sample_tokens)
+        self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim)
         # self.embedding = nn.Embedding(self.num_embeddings, 1)
         self.embedding.weight.data.uniform_(-1/self.num_embeddings, 1/self.num_embeddings)
     
     def forward(self, inputs):
         # 입력을 (B, C, H, W)에서 (B*H*W, C)로 변환
         input_shape = inputs.shape
-        flat_input = inputs.view(-1, self.embedding_dim // self.sample_tokens)
+        # flat_input = inputs.view(-1, self.embedding_dim // self.sample_tokens)
+        flat_input = inputs.view(-1, self.embedding_dim)
         # flat_input = inputs.view(-1, 1)
         
         # 거리 계산

@@ -140,11 +140,11 @@ class Transformer(nn.Module):
 
         enc_output = self.encoder(x)
 
-        enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
-        enc_output = enc_output.view(x.shape[0], self.sample_tokens, -1)
+        # enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
+        # enc_output = enc_output.view(x.shape[0], self.sample_tokens, -1)
         z, vq_loss, perplexity = self.vq(enc_output)
-        z = z.view(z.shape[0], 1, -1)
-        z = z.expand(-1, x.size(1), -1)  # (batch, seq length, feature dim)으로 복제
+        # z = z.view(z.shape[0], 1, -1)
+        # z = z.expand(-1, x.size(1), -1)  # (batch, seq length, feature dim)으로 복제
 
         dec_output = self.decoder(z)
 
