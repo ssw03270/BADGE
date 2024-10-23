@@ -51,7 +51,7 @@ class ClusterLayoutDataset(Dataset):
             self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
         else:
             self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
-        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))]
+        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))][:10]
 
         datasets = []
 
@@ -131,9 +131,13 @@ class ClusterLayoutDataset(Dataset):
         bbox_labels = discrete_data[:, :5]  # x, y, w, h, r
         category_labels = discrete_data[:, 5][:, np.newaxis]  # c
 
+        # Create mask: 1 for actual tokens, 0 for pad tokens
+        mask = (discrete_data[:, 5] == 1).astype(np.float32)[:, np.newaxis]  # shape: (MAX_BUILDINGS, 1)
+
         return {
             "bbox_labels": torch.tensor(bbox_labels, dtype=torch.long),
-            "category_labels": torch.tensor(category_labels, dtype=torch.float32)
+            "category_labels": torch.tensor(category_labels, dtype=torch.float32),
+            "mask": torch.tensor(mask, dtype=torch.float32)
         }
 
 

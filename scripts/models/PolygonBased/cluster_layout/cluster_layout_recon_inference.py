@@ -13,7 +13,7 @@ from transformer import Transformer
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
-    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_model_128_codebook_16/best_model.pt', help='Path to the model checkpoint.')
+    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_64_st_4/best_model.pt', help='Path to the model checkpoint.')
     parser.add_argument('--output_dir', type=str, default='inference_outputs', help='Directory to save inference results.')
     parser.add_argument('--test_batch_size', type=int, default=5012, required=False, help='Batch size for testing.')
     parser.add_argument('--device', type=str, default=None, help='Device to run inference on (e.g., "cuda" or "cpu"). If not set, uses Accelerator default.')
@@ -35,13 +35,14 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers)
 
     # Initialize the model architecture (ensure it matches the training setup)
-    d_model = 128
+    d_model = 256
     d_inner = d_model * 4
     n_layer = 4
     n_head = 8
     dropout = 0.1
-    codebook_size, commitment_cost = 16, 0.25
+    codebook_size, commitment_cost = 64, 0.25
     n_tokens = 10
+    sample_tokens = 4
     model = Transformer(
         d_model=d_model,
         d_inner=d_inner,
@@ -50,7 +51,8 @@ def main():
         dropout=dropout,
         codebook_size=codebook_size,
         commitment_cost=commitment_cost,
-        n_tokens=n_tokens
+        n_tokens=n_tokens,
+        sample_tokens=sample_tokens
     )
 
     # Load the checkpoint
@@ -70,14 +72,21 @@ def main():
     with torch.no_grad():
         progress_bar = tqdm(test_dataloader, desc="Inference", disable=not accelerator.is_local_main_process)
         for batch in progress_bar:
+            bbox_labels = batch['bbox_labels']
+            category_labels = batch['category_labels']
 
-            # Forward pass
-            coords_output, _, _ = model(batch)
+            # 모델 Forward
+            bbox_output, category_output, vq_loss, perplexity = model(bbox_labels, category_labels)
+            
+            bbox_output = torch.argmax(bbox_output, dim=-1) / 63
+            output = torch.cat((bbox_output, category_output), dim=-1)
+
+            gt = torch.cat((bbox_labels / 63, category_labels), dim=-1)
 
             # Post-process outputs if necessary
             # For example, convert logits to predicted tokens
-            all_coords_outputs.append(coords_output.cpu().numpy())
-            gt_coords_outputs.append(batch.cpu().numpy())
+            all_coords_outputs.append(output.cpu().numpy())
+            gt_coords_outputs.append(gt.cpu().numpy())
 
     all_coords_outputs = np.concatenate(all_coords_outputs, axis=0)
     gt_coords_outputs = np.concatenate(gt_coords_outputs, axis=0)

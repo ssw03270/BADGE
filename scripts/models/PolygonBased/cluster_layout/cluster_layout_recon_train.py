@@ -68,7 +68,7 @@ def main():
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)
     val_dataloader = accelerator.prepare(val_dataloader)
 
-    bbox_loss_fn = nn.CrossEntropyLoss()  # 다중 클래스 분류 손실
+    bbox_loss_fn = nn.CrossEntropyLoss(reduction='none')
     category_loss_fn = nn.BCEWithLogitsLoss()  # 이진 분류 손실 (카테고리)
 
     best_val_loss = float('inf')
@@ -83,18 +83,24 @@ def main():
         for batch in progress_bar:
             bbox_labels = batch['bbox_labels']
             category_labels = batch['category_labels']
+            mask = batch['mask']
             optimizer.zero_grad()
 
             # 모델 Forward
             bbox_output, category_output, vq_loss, perplexity = model(bbox_labels, category_labels)
 
             bbox_output_flat = bbox_output.view(-1, 64)
-
-            # bbox_labels: (batch, 10, 5) -> (batch * 10 * 5)
-            bbox_labels_flat = bbox_labels.view(-1).long()
-
-            # CrossEntropyLoss 계산
+            # bbox_labels: (batch, num_objects, 5) -> (batch * num_objects * 5)
+            bbox_labels_flat = bbox_labels.view(-1)
+            # CrossEntropyLoss 계산 (개별 손실)
             bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
+            # Reshape bbox_loss to (batch, num_objects, 5)
+            bbox_loss = bbox_loss.view(bbox_output.shape[0], n_tokens, 5)
+            # Apply mask: expand mask to (batch, num_objects, 5)
+            mask_expanded = mask.expand(-1, -1, 5)
+            bbox_loss = bbox_loss * mask_expanded
+            # 최종 bbox_loss는 배치와 객체에 따라 평균
+            bbox_loss = bbox_loss.sum() / mask.sum()
 
             # category_output: (batch, 10, 1) -> (batch * 10, 1)
             category_output_flat = category_output.view(-1, 1)
@@ -187,7 +193,7 @@ def main():
         if accelerator.is_main_process and val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch + 1
-            best_model_dir = f"vq_model_checkpoints/d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}_/best_model.pt"
+            best_model_dir = f"vq_model_checkpoints/d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)
