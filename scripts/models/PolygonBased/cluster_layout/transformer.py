@@ -149,7 +149,7 @@ class Transformer(nn.Module):
         dec_output = self.decoder(z)
 
         bbox_output = self.bbox_fc(dec_output)
-        bbox_output = bbox_output.view(batch.shape[0], self.n_tokens, self.n, self.bin)
+        bbox_output = bbox_output.view(bbox.shape[0], self.n_tokens, self.n, self.bin)
         bbox_output = torch.sigmoid(bbox_output)
 
         category_output = self.category_fc(dec_output)
