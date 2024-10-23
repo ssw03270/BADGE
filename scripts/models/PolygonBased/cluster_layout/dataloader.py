@@ -126,6 +126,7 @@ class ClusterLayoutDataset(Dataset):
         data = self.dataset[idx] # seq, 6
         discrete_data = data.copy()
         discrete_data[:, :5] = np.floor(data[:, :5] * 63).astype(int)
+        discrete_data[:, :5] = np.clip(discrete_data[:, :5], 0, 63)
 
         bbox_labels = discrete_data[:, :5]  # x, y, w, h, r
         category_labels = discrete_data[:, 5][:, np.newaxis]  # c
