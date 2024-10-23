@@ -128,7 +128,7 @@ class ClusterLayoutDataset(Dataset):
         discrete_data[:, :5] = np.floor(data[:, :5] * 63).astype(int)
 
         bbox_labels = discrete_data[:, :5]  # x, y, w, h, r
-        category_labels = discrete_data[:, 5].float().unsqueeze(-1)  # c
+        category_labels = discrete_data[:, 5].unsqueeze(-1)  # c
 
         return {
             "bbox_labels": torch.tensor(bbox_labels, dtype=torch.long),
