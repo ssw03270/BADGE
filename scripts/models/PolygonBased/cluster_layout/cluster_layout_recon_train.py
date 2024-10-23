@@ -68,6 +68,9 @@ def main():
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)
     val_dataloader = accelerator.prepare(val_dataloader)
 
+    bbox_loss_fn = nn.CrossEntropyLoss()  # 다중 클래스 분류 손실
+    category_loss_fn = nn.BCEWithLogitsLoss()  # 이진 분류 손실 (카테고리)
+
     best_val_loss = float('inf')
     best_epoch = 0
 
@@ -78,16 +81,31 @@ def main():
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", disable=not accelerator.is_local_main_process)
 
         for batch in progress_bar:
+            bbox_labels = batch['bbox_labels']
+            category_labels = batch['category_labels']
             optimizer.zero_grad()
 
             # 모델 Forward
-            coords_output, vq_loss, perplexity = model(batch)
+            bbox_output, category_output, vq_loss, perplexity = model(bbox_labels, category_labels)
 
-            loss_coords = F.mse_loss(coords_output, batch.clone())
-            if vq_loss is not None:
-                loss = loss_coords + vq_loss
-            else:
-                loss = loss_coords
+            bbox_output_flat = bbox_output.view(-1, 64)
+
+            # bbox_labels: (batch, 10, 5) -> (batch * 10 * 5)
+            bbox_labels_flat = bbox_labels.view(-1).long()
+
+            # CrossEntropyLoss 계산
+            bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
+
+            # category_output: (batch, 10, 1) -> (batch * 10, 1)
+            category_output_flat = category_output.view(-1, 1)
+
+            # category_labels: (batch, 10, 1) -> (batch * 10, 1)
+            category_labels_flat = category_labels.view(-1, 1)
+
+            # BCEWithLogitsLoss 계산
+            category_loss = category_loss_fn(category_output_flat, category_labels_flat)
+
+            loss = bbox_loss + category_loss + vq_loss
 
             # 역전파 및 최적화
             accelerator.backward(loss)
@@ -104,40 +122,59 @@ def main():
         # 검증 단계 (옵션)
         model.eval()
         val_loss = 0
-        val_loss_coords = 0
+        val_loss_bbox = 0
+        val_loss_category = 0
         val_loss_vq = 0
         with torch.no_grad():
             for batch in val_dataloader:
+                bbox_labels = batch['bbox_labels']
+                category_labels = batch['category_labels']
 
-                coords_output, vq_loss, perplexity = model(batch)
+                # 모델 Forward
+                bbox_output, category_output, vq_loss, perplexity = model(bbox_labels, category_labels)
 
-                loss_coords = F.mse_loss(coords_output, batch.clone())
-                if vq_loss is not None:
-                    loss =  loss_coords + vq_loss
-                else:
-                    loss = loss_coords
+                bbox_output_flat = bbox_output.view(-1, 64)
+
+                # bbox_labels: (batch, 10, 5) -> (batch * 10 * 5)
+                bbox_labels_flat = bbox_labels.view(-1).long()
+
+                # CrossEntropyLoss 계산
+                bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
+
+                # category_output: (batch, 10, 1) -> (batch * 10, 1)
+                category_output_flat = category_output.view(-1, 1)
+
+                # category_labels: (batch, 10, 1) -> (batch * 10, 1)
+                category_labels_flat = category_labels.view(-1, 1)
+
+                # BCEWithLogitsLoss 계산
+                category_loss = category_loss_fn(category_output_flat, category_labels_flat)
+
+                loss = bbox_loss + category_loss + vq_loss
 
                 val_loss += loss.item()
-                val_loss_coords += loss_coords
-                if vq_loss is not None:
-                    val_loss_vq += vq_loss
+                val_loss_bbox += bbox_loss
+                val_loss_category += category_loss
+                val_loss_vq += vq_loss
 
         if accelerator.is_main_process:
             avg_val_loss = val_loss / len(val_dataloader)
-            avg_val_coords = val_loss_coords / len(val_dataloader)
+            avg_val_bbox = val_loss_bbox / len(val_dataloader)
+            avg_val_category = val_loss_category / len(val_dataloader)
             avg_val_vq = val_loss_vq / len(val_dataloader) if vq_loss is not None else None
 
             wandb.log({
                 "validation_loss": avg_val_loss,
-                "validation_coords_loss": avg_val_coords,
+                "validation_bbox_loss": avg_val_bbox,
+                "validation_category_loss": avg_val_category,
                 "validation_vq_loss": avg_val_vq,
                 "val_epoch": epoch + 1
             })
 
             print(f"Validation Loss: {avg_val_loss}")
-            print(f"Validation Coords Loss: {avg_val_coords}")
-            if avg_val_vq is not None:
-                print(f"Validation VQ Loss: {avg_val_vq}")
+            print(f"Validation Bbox Loss: {avg_val_bbox}")
+            print(f"Validation Category Loss: {avg_val_category}")
+            print(f"Validation VQ Loss: {avg_val_vq}")
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:

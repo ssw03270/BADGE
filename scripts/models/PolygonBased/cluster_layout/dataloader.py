@@ -123,9 +123,17 @@ class ClusterLayoutDataset(Dataset):
         Returns:
         - dict: A dictionary containing the padded matrices and padding masks for boundary adjacency matrix, building adjacency matrix, and boundary-building adjacency matrix, as well as the boundary positions and the number of boundaries and buildings. For test data, it also returns the filename of the loaded pickle file.
         """
-        data = self.dataset[idx]
-            
-        return torch.tensor(data, dtype=torch.float32, requires_grad=True)
+        data = self.dataset[idx] # seq, 6
+        discrete_data = data.copy()
+        discrete_data[:, :5] = np.floor(data[:, :5] * 63).astype(int)
+
+        bbox_labels = discrete_data[:, :, :5]  # x, y, w, h, r
+        category_labels = discrete_data[:, :, 5].float().unsqueeze(-1)  # c
+
+        return {
+            "bbox_labels": torch.tensor(bbox_labels, dtype=torch.long),
+            "category_labels": torch.tensor(category_labels, dtype=torch.float32)
+        }
 
 
     def __len__(self):

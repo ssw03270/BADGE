@@ -99,24 +99,45 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
 
         self.d_model = d_model
+        self.n_tokens = n_tokens
         self.sample_tokens = sample_tokens
-        self.n = 6
+        self.n = 5
+        self.bin = 64
 
-        self.encoding = nn.Linear(self.n, d_model)
+        # self.encoding = nn.Linear(self.n, d_model)
+        self.x_embed = nn.Embedding(self.bin, d_model)
+        self.y_embed = nn.Embedding(self.bin, d_model)
+        self.w_embed = nn.Embedding(self.bin, d_model)
+        self.h_embed = nn.Embedding(self.bin, d_model)
+        self.r_embed = nn.Embedding(self.bin, d_model)
+        self.c_embed = nn.Linear(1, d_model)
+
+        self.encoding = nn.Linear(d_model * (self.n+1), d_model)
         self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
 
         self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
 
-        self.coords_fc = nn.Linear(d_model, self.n)
+        self.category_fc = nn.Linear(d_model, 1)
+        self.bbox_fc = nn.Linear(d_model, self.n * self.bin)
 
-    def forward(self, batch):
+    def forward(self, bbox, category):
         """
         Forward pass of the Transformer model.
 
         Processes coords features with attention mechanisms and positional encoding.
         """
-        x = self.encoding(batch)
+        x, y, w, h, r, c = bbox[:, :, 0], bbox[:, :, 1], bbox[:, :, 2], bbox[:, :, 3], bbox[:, :, 4], category
+        x = self.x_embed(x)
+        y = self.y_embed(y)
+        w = self.w_embed(w)
+        h = self.h_embed(h)
+        r = self.r_embed(r)
+        c = self.c_embed(c)
+
+        combined = torch.cat((x, y, w, h, r, c), dim=-1)
+        x = self.encoding(combined)
+
         enc_output = self.encoder(x)
 
         enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
@@ -127,10 +148,14 @@ class Transformer(nn.Module):
 
         dec_output = self.decoder(z)
 
-        coords_output = self.coords_fc(dec_output)
-        coords_output = torch.sigmoid(coords_output)
+        bbox_output = self.bbox_fc(dec_output)
+        bbox_output = bbox_output.view(batch.shape[0], self.n_tokens, self.n, self.bin)
+        bbox_output = torch.sigmoid(bbox_output)
 
-        return coords_output, vq_loss, perplexity
+        category_output = self.category_fc(dec_output)
+        category_output = torch.sigmoid(category_output)
+
+        return bbox_output, category_output, vq_loss, perplexity
 
     def get_encoding_indices(self, batch):
         x = self.encoding(batch)
