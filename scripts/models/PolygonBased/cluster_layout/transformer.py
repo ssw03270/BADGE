@@ -118,8 +118,8 @@ class Transformer(nn.Module):
 
         self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
 
-        self.category_fc = nn.Linear(d_model, 1)
-        self.bbox_fc = nn.Linear(d_model, self.n * self.bin)
+        self.category_fc = nn.Linear(d_model, 1, bias=False)
+        self.bbox_fc = nn.Linear(d_model, self.n * self.bin, bias=False)
 
     def forward(self, bbox, category):
         """

@@ -100,7 +100,7 @@ def main():
             mask_expanded = mask.expand(-1, -1, 5)
             bbox_loss = bbox_loss * mask_expanded
             # 최종 bbox_loss는 배치와 객체에 따라 평균
-            bbox_loss = bbox_loss.sum() / mask.sum()
+            bbox_loss = bbox_loss.sum() / mask_expanded.sum()
 
             # category_output: (batch, 10, 1) -> (batch * 10, 1)
             category_output_flat = category_output.view(-1, 1)
@@ -151,7 +151,7 @@ def main():
                 mask_expanded = mask.expand(-1, -1, 5)
                 bbox_loss = bbox_loss * mask_expanded
                 # 최종 bbox_loss는 배치와 객체에 따라 평균
-                bbox_loss = bbox_loss.sum() / mask.sum()
+                bbox_loss = bbox_loss.sum() / mask_expanded.sum()
 
                 # category_output: (batch, 10, 1) -> (batch * 10, 1)
                 category_output_flat = category_output.view(-1, 1)
