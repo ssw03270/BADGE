@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--weight_decay', type=float, default=0.02, required=False, help='Weight decay.')
     parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
-    parser.add_argument('--sample_tokens', type=int, default=4, required=False, help='Number of sample tokens.')
+    parser.add_argument('--sample_tokens', type=int, default=8, required=False, help='Number of sample tokens.')
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     args = parser.parse_args()
 
@@ -99,7 +99,7 @@ def main():
         # Log training loss to WandB
         if accelerator.is_main_process:
             avg_train_loss = total_loss / len(train_dataloader)
-            wandb.log({"epoch": epoch + 1, "train_loss": avg_train_loss})
+            wandb.log({"train_epoch": epoch + 1, "train_loss": avg_train_loss})
 
         # 검증 단계 (옵션)
         model.eval()
@@ -131,7 +131,7 @@ def main():
                 "validation_loss": avg_val_loss,
                 "validation_coords_loss": avg_val_coords,
                 "validation_vq_loss": avg_val_vq,
-                "epoch": epoch + 1
+                "val_epoch": epoch + 1
             })
 
             print(f"Validation Loss: {avg_val_loss}")
@@ -141,7 +141,7 @@ def main():
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
-            save_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/checkpoint_epoch_{epoch+1}"
+            save_dir = f"vq_model_checkpoints/d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}/checkpoint_epoch_{epoch+1}"
             os.makedirs(save_dir, exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
@@ -150,7 +150,7 @@ def main():
         if accelerator.is_main_process and val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch + 1
-            best_model_dir = f"vq_model_checkpoints/d_model_{args.d_model}_codebook_{args.codebook_size}/best_model.pt"
+            best_model_dir = f"vq_model_checkpoints/d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}_/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)
