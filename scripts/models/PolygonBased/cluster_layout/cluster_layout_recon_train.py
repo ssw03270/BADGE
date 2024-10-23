@@ -135,6 +135,7 @@ def main():
             for batch in val_dataloader:
                 bbox_labels = batch['bbox_labels']
                 category_labels = batch['category_labels']
+                mask = batch['mask']
 
                 # 모델 Forward
                 bbox_output, category_output, vq_loss, perplexity = model(bbox_labels, category_labels)
