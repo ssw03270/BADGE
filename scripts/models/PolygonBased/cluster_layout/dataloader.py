@@ -8,6 +8,7 @@ from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 
+
 def load_pickle_file_with_cache(subfolder, folder_path):
     """
     Loads and processes a single pickle file corresponding to a subfolder.
@@ -19,14 +20,16 @@ def load_pickle_file_with_cache(subfolder, folder_path):
     Returns:
     - list: A list of clusters extracted from the pickle file.
     """
-    file_path = os.path.join(folder_path, subfolder, f'train_codebook/{subfolder}_graph_prep_list_with_clusters_detail.pkl')
+    file_path = os.path.join(folder_path, subfolder,
+                             f'train_codebook/{subfolder}_graph_prep_list_hierarchical_10_fixed.pkl')
     if not os.path.exists(file_path):
         return []
-    
+
     try:
         with open(file_path, 'rb') as f:
             data = pickle.load(f)
-        dataset = [list(d['cluster_id2normalized_bldg_layout_cluster_list'].values()) for d in data if 'cluster_id2normalized_bldg_layout_cluster_list' in d]
+        dataset = [list(d['cluster_id2normalized_bldg_layout_bldg_bbox_list'].values()) for d in data if
+                   'cluster_id2normalized_bldg_layout_bldg_bbox_list' in d]
         dataset = [cluster for boundary in dataset for cluster in boundary]
         return dataset
     except Exception as e:
