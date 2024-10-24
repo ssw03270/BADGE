@@ -54,7 +54,7 @@ class ClusterLayoutDataset(Dataset):
             self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
         else:
             self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
-        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))][:300]
+        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))][:]
 
         datasets = []
 
