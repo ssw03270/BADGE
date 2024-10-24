@@ -250,14 +250,14 @@ subfolders = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(
 debug = False
 def process_folder(folder):
     error_count = 0
-    output_path = os.path.join(output_dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_with_clusters_detail.pkl')
+    output_path = os.path.join(output_dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_hierarchical_10_fixed.pkl')
     # if os.path.exists(output_path):
     #     print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
     #     return  # 이미 처리된 경우 건너뜁니다.
     
     os.makedirs(os.path.join(output_dataset_path, folder, f'preprocessed/'), exist_ok=True)  # output 디렉토리 생성
 
-    data_path = os.path.join(dataset_path, folder, f'graph/{folder}_graph_prep_list_with_clusters.pkl')
+    data_path = os.path.join(dataset_path, folder, f'graph/{folder}_graph_prep_list_hierarchical_10_fixed.pkl')
     if not os.path.exists(data_path):
         print(f"{data_path} 파일이 존재하지 않습니다. 건너뜁니다.")
         return
@@ -271,7 +271,7 @@ def process_folder(folder):
         try:
             is_stop = False
 
-            hierarchical_clustering_list = data['hierarchical_clustering_k_10_debug']
+            hierarchical_clustering_list = data['hierarchical_k_10']
             # hierarchical_clustering_list = data['RoadNetwork_k_10']
             blk_recover_poly = data['blk_recover_poly']
             bldg_poly_list = data['bldg_poly_list']
@@ -422,6 +422,7 @@ def process_folder(folder):
                         cluster_id2region_id_list[0] = [region_id]
                         
             cluster_id2cluster_bbox = {}
+            cluster_id2cluster_bldg_bbox = {}
             for cluster_id, region_id_list in cluster_id2region_id_list.items():
                 region_poly_list = []
                 for region_id in region_id_list:
@@ -433,8 +434,20 @@ def process_folder(folder):
                 bbox_poly = box(*min_bbox)
                 cluster_id2cluster_bbox[cluster_id] = bbox_poly
 
+                if cluster_id in cluster_id2bldg_id_list:
+                    bldg_id_list = cluster_id2bldg_id_list[cluster_id]
+                    comb_bldg_poly_list = []
+                    for bldg_id in bldg_id_list:
+                        comb_bldg_poly_list.append(bldg_id2normalized_bldg_poly_blk[bldg_id])
+                    combined_bldg_bbox = unary_union(comb_bldg_poly_list)
+                    min_bbox = combined_bldg_bbox.bounds
+                    bldg_bbox_poly = box(*min_bbox)
+                    cluster_id2cluster_bldg_bbox[cluster_id] = bldg_bbox_poly
+
             bldg_id2normalized_bldg_poly_cluster = {}
             bldg_id2normalized_bldg_layout_cluster = {}
+            bldg_id2normalized_bldg_poly_bldg_bbox = {}
+            bldg_id2normalized_bldg_layout_bldg_bbox = {}
             for cluster_id, _bldg_id_list in cluster_id2bldg_id_list.items():
                 cluster_bbox = cluster_id2cluster_bbox[cluster_id]
                 for bldg_id in _bldg_id_list:
@@ -474,6 +487,44 @@ def process_folder(folder):
                     bldg_id2normalized_bldg_poly_cluster[bldg_id] = normalized_bldg_poly_cluster
                     bldg_id2normalized_bldg_layout_cluster[bldg_id] = normalized_bldg_layout_cluster
 
+                cluster_bbox = cluster_id2cluster_bldg_bbox[cluster_id]
+                for bldg_id in _bldg_id_list:
+                    normalized_bldg_poly_blk = bldg_id2normalized_bldg_poly_blk[bldg_id]
+                    normalized_bldg_poly_layout = bldg_id2normalized_bldg_layout_blk[bldg_id]
+
+                    _, min_coords, range_max, out_of_bounds = normalize_coords_uniform(cluster_bbox.exterior.coords)
+
+                    if len(out_of_bounds) > 0:
+                        is_stop = True
+
+                    normalized_bldg_poly_cluster, _, _, out_of_bounds = normalize_coords_uniform(normalized_bldg_poly_blk.exterior.coords, min_coords, range_max)
+                    normalized_bldg_poly_cluster = Polygon(normalized_bldg_poly_cluster)
+
+                    if len(out_of_bounds) > 0:
+                        is_stop = True
+
+                    x, y, w, h, r = normalized_bldg_poly_layout
+                    layout_poly = create_bounding_box(x, y, w, h, r)
+                    normalized_layout, _, _, out_of_bounds = normalize_coords_uniform(layout_poly.exterior.coords, min_coords, range_max)
+                    normalized_layout = Polygon(normalized_layout)
+
+                    if len(out_of_bounds) > 0:
+                        is_stop = True
+
+                    r = get_rotation_angle(list(normalized_layout.exterior.coords))
+                    normalized_layout = rotate(normalized_layout, -r, origin='centroid', use_radians=False)
+
+                    minx, miny, maxx, maxy = normalized_layout.bounds
+                    x = (minx + maxx) / 2
+                    y = (miny + maxy) / 2
+                    w = maxx - minx
+                    h = maxy - miny
+
+                    normalized_bldg_layout_cluster = [x, y, w, h, r]
+
+                    bldg_id2normalized_bldg_poly_bldg_bbox[bldg_id] = normalized_bldg_poly_cluster
+                    bldg_id2normalized_bldg_layout_bldg_bbox[bldg_id] = normalized_bldg_layout_cluster
+
             cluster_id2face_blk_linestring_list = {}
             for cluster_id, region_id_list in cluster_id2region_id_list.items():
                 for region_id in region_id_list:
@@ -512,10 +563,13 @@ def process_folder(folder):
             new_data['bldg_id2cluster_id'] = bldg_id2cluster_id
             new_data['bldg_id2normalized_bldg_poly_blk'] = bldg_id2normalized_bldg_poly_blk
             new_data['bldg_id2normalized_bldg_poly_cluster'] = bldg_id2normalized_bldg_poly_cluster
+            new_data['bldg_id2normalized_bldg_poly_bldg_bbox'] = bldg_id2normalized_bldg_poly_bldg_bbox
             new_data['bldg_id2normalized_bldg_layout_blk'] = bldg_id2normalized_bldg_layout_blk
             new_data['bldg_id2normalized_bldg_layout_cluster'] = bldg_id2normalized_bldg_layout_cluster
+            new_data['bldg_id2normalized_bldg_layout_bldg_bbox'] = bldg_id2normalized_bldg_layout_bldg_bbox
             new_data['cluster_id2bldg_id_list'] = cluster_id2bldg_id_list
             new_data['cluster_id2cluster_bbox'] = cluster_id2cluster_bbox
+            new_data['cluster_id2cluster_bldg_bbox'] = cluster_id2cluster_bldg_bbox
             new_data['cluster_id2region_id_list'] = cluster_id2region_id_list
             new_data['cluster_id2face_blk_linestring_list'] = cluster_id2face_blk_linestring_list
             new_data['region_id2cluster_id_list'] = region_id2cluster_id_list
@@ -561,11 +615,11 @@ def process_folder(folder):
                 for cluster_id, _bldg_id_list in cluster_id2bldg_id_list.items():
                     if len(_bldg_id_list) > 0:
                         for bldg_id in _bldg_id_list:
-                            normalized_bldg_poly_cluster = bldg_id2normalized_bldg_poly_cluster[bldg_id]
+                            normalized_bldg_poly_cluster = bldg_id2normalized_bldg_poly_bldg_bbox[bldg_id]
                             x, y = normalized_bldg_poly_cluster.exterior.coords.xy
                             axs[1][1].plot(x, y, color=colors[cluster_id])
 
-                            normalized_bldg_layout_cluster = bldg_id2normalized_bldg_layout_cluster[bldg_id]
+                            normalized_bldg_layout_cluster = bldg_id2normalized_bldg_layout_bldg_bbox[bldg_id]
                             x, y, w, h, r = normalized_bldg_layout_cluster
                             layout_poly = create_bounding_box(x, y, w, h, r)
                             x, y = layout_poly.exterior.coords.xy

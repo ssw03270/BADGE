@@ -13,7 +13,7 @@ from transformer import Transformer
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
-    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_64_st_4/best_model.pt', help='Path to the model checkpoint.')
+    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_512_st_4/best_model.pt', help='Path to the model checkpoint.')
     parser.add_argument('--output_dir', type=str, default='inference_outputs', help='Directory to save inference results.')
     parser.add_argument('--test_batch_size', type=int, default=5012, required=False, help='Batch size for testing.')
     parser.add_argument('--device', type=str, default=None, help='Device to run inference on (e.g., "cuda" or "cpu"). If not set, uses Accelerator default.')
@@ -40,7 +40,7 @@ def main():
     n_layer = 4
     n_head = 8
     dropout = 0.1
-    codebook_size, commitment_cost = 64, 0.25
+    codebook_size, commitment_cost = 512, 0.25
     n_tokens = 10
     sample_tokens = 4
     model = Transformer(
@@ -72,21 +72,14 @@ def main():
     with torch.no_grad():
         progress_bar = tqdm(test_dataloader, desc="Inference", disable=not accelerator.is_local_main_process)
         for batch in progress_bar:
-            bbox_labels = batch['bbox_labels']
-            category_labels = batch['category_labels']
 
             # 모델 Forward
-            bbox_output, category_output, vq_loss, perplexity = model(bbox_labels, category_labels)
-            
-            bbox_output = torch.argmax(bbox_output, dim=-1) / 63
-            output = torch.cat((bbox_output, category_output), dim=-1)
-
-            gt = torch.cat((bbox_labels / 63, category_labels), dim=-1)
+            coords_output, vq_loss, perplexity = model(batch)
 
             # Post-process outputs if necessary
             # For example, convert logits to predicted tokens
-            all_coords_outputs.append(output.cpu().numpy())
-            gt_coords_outputs.append(gt.cpu().numpy())
+            all_coords_outputs.append(coords_output.cpu().numpy())
+            gt_coords_outputs.append(batch.cpu().numpy())
 
     all_coords_outputs = np.concatenate(all_coords_outputs, axis=0)
     gt_coords_outputs = np.concatenate(gt_coords_outputs, axis=0)

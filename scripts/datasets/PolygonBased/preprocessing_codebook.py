@@ -50,14 +50,14 @@ PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
 debug = False
 def process_folder(folder):
     error_count = 0
-    output_path = os.path.join(dataset_path, folder, f'train_codebook/{folder}_graph_prep_list_with_clusters_detail.pkl')
+    output_path = os.path.join(dataset_path, folder, f'train_codebook/{folder}_graph_prep_list_hierarchical_10_fixed.pkl')
     if os.path.exists(output_path):
         print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
         return  # 이미 처리된 경우 건너뜁니다.
     
     os.makedirs(os.path.join(dataset_path, folder, f'train_codebook/'), exist_ok=True)  # output 디렉토리 생성
 
-    data_path = os.path.join(dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_with_clusters_detail.pkl')
+    data_path = os.path.join(dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_hierarchical_10_fixed.pkl')
     if not os.path.exists(data_path):
         print(f"{data_path} 파일이 존재하지 않습니다. 건너뜁니다.")
         return
@@ -69,13 +69,15 @@ def process_folder(folder):
     for data in tqdm(data_list):
         cluster_id2bldg_id_list = data['cluster_id2bldg_id_list']
         bldg_id2normalized_bldg_layout_cluster = data['bldg_id2normalized_bldg_layout_cluster']
-        hierarchical_clustering_list = data['hierarchical_clustering_k_10_debug']
+        bldg_id2normalized_bldg_layout_bldg_bbox = data['bldg_id2normalized_bldg_layout_bldg_bbox']
+        hierarchical_clustering_list = data['hierarchical_k_10']
 
         for clustering in hierarchical_clustering_list:
             if len(clustering) > 10:
                 print(len(clustering))
        
         cluster_id2normalized_bldg_layout_cluster_list = {}
+        cluster_id2normalized_bldg_layout_bldg_bbox_list = {}
         for cluster_id, bldg_id_list in cluster_id2bldg_id_list.items():
                 
             for bldg_id in bldg_id_list:
@@ -87,20 +89,19 @@ def process_folder(folder):
                     cluster_id2normalized_bldg_layout_cluster_list[cluster_id].append(gt_bldg_layout)
                 else:
                     cluster_id2normalized_bldg_layout_cluster_list[cluster_id] = [gt_bldg_layout]
+                    
+                bldg_layout = bldg_id2normalized_bldg_layout_bldg_bbox[bldg_id]
+                x, y, w, h, r = bldg_layout
+                gt_bldg_layout = [x, y, w, h, r / 360, 1]
 
-        cluster_id2padded_normalized_bldg_layout_cluster_list = {}
-        for cluster_id, normalized_bldg_layout_cluster_list in cluster_id2normalized_bldg_layout_cluster_list.items():
-            new_bldg_layout_list = normalized_bldg_layout_cluster_list
-            if len(normalized_bldg_layout_cluster_list) < MAX_BUILDINGS:
-                padding_needed = MAX_BUILDINGS - len(normalized_bldg_layout_cluster_list)
-                padding_array = np.array([PADDING_BUILDING] * padding_needed).tolist()
-                new_bldg_layout_list += padding_array
-                
-            cluster_id2padded_normalized_bldg_layout_cluster_list[cluster_id] = new_bldg_layout_list
+                if cluster_id in cluster_id2normalized_bldg_layout_bldg_bbox_list:
+                    cluster_id2normalized_bldg_layout_bldg_bbox_list[cluster_id].append(gt_bldg_layout)
+                else:
+                    cluster_id2normalized_bldg_layout_bldg_bbox_list[cluster_id] = [gt_bldg_layout]
 
         new_data = data
         new_data['cluster_id2normalized_bldg_layout_cluster_list'] = cluster_id2normalized_bldg_layout_cluster_list
-        new_data['cluster_id2padded_normalized_bldg_layout_cluster_list'] = cluster_id2padded_normalized_bldg_layout_cluster_list
+        new_data['cluster_id2normalized_bldg_layout_bldg_bbox_list'] = cluster_id2normalized_bldg_layout_bldg_bbox_list
         
         new_data_list.append(new_data)
 
