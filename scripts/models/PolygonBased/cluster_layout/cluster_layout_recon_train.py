@@ -55,7 +55,7 @@ def main():
     n_head = 8
     dropout = 0.1
     commitment_cost = 0.25
-    n_tokens = 10
+    n_tokens = 60
     sample_tokens = args.sample_tokens
     model = Transformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
                         codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens, sample_tokens=sample_tokens)
