@@ -67,26 +67,37 @@ def main():
     # Containers for storing results
     all_coords_outputs = []
     gt_coords_outputs = []
+    min_coords_outputs = []
+    range_max_outputs = []
 
     # Inference loop
     with torch.no_grad():
         progress_bar = tqdm(test_dataloader, desc="Inference", disable=not accelerator.is_local_main_process)
         for batch in progress_bar:
+            data = batch[0]
+            min_coords = batch[1]
+            range_max = batch[2]
 
             # 모델 Forward
-            coords_output, vq_loss, perplexity = model(batch)
+            coords_output, vq_loss, perplexity = model(data)
 
             # Post-process outputs if necessary
             # For example, convert logits to predicted tokens
             all_coords_outputs.append(coords_output.cpu().numpy())
-            gt_coords_outputs.append(batch.cpu().numpy())
+            gt_coords_outputs.append(data.cpu().numpy())
+            min_coords_outputs.append(min_coords)
+            range_max_outputs.append(range_max)
 
     all_coords_outputs = np.concatenate(all_coords_outputs, axis=0)
     gt_coords_outputs = np.concatenate(gt_coords_outputs, axis=0)
+    min_coords_outputs = np.array(min_coords_outputs)
+    range_max_outputs = np.array(range_max_outputs)
+
 
     # Save the outputs
     coords_output_path = os.path.join(args.output_dir + '/' + model_name, 'predicted_coords.npz')
-    np.savez(f'{coords_output_path}', all_coords_outputs=all_coords_outputs, gt_coords_outputs=gt_coords_outputs)
+    np.savez(f'{coords_output_path}', all_coords_outputs=all_coords_outputs, gt_coords_outputs=gt_coords_outputs,
+             min_coords_outputs=min_coords_outputs, range_max_outputs=range_max_outputs)
 
     if accelerator.is_main_process:
         print(f"Inference completed. Results saved to '{args.output_dir + '/' + model_name}'")
