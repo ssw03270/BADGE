@@ -114,7 +114,7 @@ def visualize(predicted_coords, gt_coords, save_dir, sample_size=100):
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize Inference Results.')
-    parser.add_argument('--output_dir', type=str, default='inference_outputs/d_256_cb_512_st_4', help='Directory where inference results are saved.')
+    parser.add_argument('--output_dir', type=str, default='inference_outputs/d_256_cb_512_st_8', help='Directory where inference results are saved.')
     parser.add_argument('--save_dir', type=str, default='visualizations', help='Directory to save the visualization plots.')
     parser.add_argument('--sample_size', type=int, default=1000, help='Number of individual samples to visualize.')
     parser.add_argument('--aggregate', action='store_true', help='Whether to create an aggregate visualization.')

@@ -13,7 +13,7 @@ from transformer import Transformer
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
-    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_512_st_4/best_model.pt', help='Path to the model checkpoint.')
+    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_512_st_8/best_model.pt', help='Path to the model checkpoint.')
     parser.add_argument('--output_dir', type=str, default='inference_outputs', help='Directory to save inference results.')
     parser.add_argument('--test_batch_size', type=int, default=5012, required=False, help='Batch size for testing.')
     parser.add_argument('--device', type=str, default=None, help='Device to run inference on (e.g., "cuda" or "cpu"). If not set, uses Accelerator default.')

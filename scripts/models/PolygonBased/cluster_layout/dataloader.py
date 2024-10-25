@@ -128,23 +128,13 @@ class ClusterLayoutDataset(Dataset):
         """
         data = self.dataset[idx] # seq, 6
 
-        return torch.tensor(data, dtype=torch.float32, requires_grad=True)
+        # return torch.tensor(data, dtype=torch.float32, requires_grad=True)
     
         discrete_data = data.copy()
         discrete_data[:, :5] = np.floor(data[:, :5] * 63).astype(int)
         discrete_data[:, :5] = np.clip(discrete_data[:, :5], 0, 63)
 
-        bbox_labels = discrete_data[:, :5]  # x, y, w, h, r
-        category_labels = discrete_data[:, 5][:, np.newaxis]  # c
-
-        # Create mask: 1 for actual tokens, 0 for pad tokens
-        mask = (discrete_data[:, 5] == 1).astype(np.float32)[:, np.newaxis]  # shape: (MAX_BUILDINGS, 1)
-
-        return {
-            "bbox_labels": torch.tensor(bbox_labels, dtype=torch.long),
-            "category_labels": torch.tensor(category_labels, dtype=torch.float32),
-            "mask": torch.tensor(mask, dtype=torch.float32)
-        }
+        return torch.tensor(discrete_data, dtype=torch.long)
 
 
     def __len__(self):
