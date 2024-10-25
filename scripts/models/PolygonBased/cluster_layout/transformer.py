@@ -136,6 +136,8 @@ class Transformer(nn.Module):
 
         dec_output = self.decoder(z)
 
+        dec_output = self.bbox_fc(dec_output)
+
         dec_output = torch.sigmoid(dec_output)
 
         return dec_output, vq_loss, perplexity
