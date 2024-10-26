@@ -74,7 +74,7 @@ def calculate_fid(source_dir, predict_suffix='_predict.png', gt_suffix='_gt.png'
 
 def main():
     parser = argparse.ArgumentParser(description='Calculate FID score between predict and ground truth images in the same directory.')
-    parser.add_argument('--source_dir', type=str, default='./visualizations/d_256_cb_512_st_8', help='Path to the directory containing both predict and gt images.')
+    parser.add_argument('--source_dir', type=str, default='./visualizations/d_256_cb_512_st_9', help='Path to the directory containing both predict and gt images.')
     parser.add_argument('--predict_suffix', type=str, default='_predict.png', help='Suffix of predict images. Default: _predict.png')
     parser.add_argument('--gt_suffix', type=str, default='_gt.png', help='Suffix of ground truth images. Default: _gt.png')
     parser.add_argument('--batch_size', type=int, default=50, help='Batch size for FID calculation. Default: 50')

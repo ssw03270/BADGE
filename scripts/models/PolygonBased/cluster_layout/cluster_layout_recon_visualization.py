@@ -15,7 +15,25 @@ def load_data(output_dir):
     data = np.load(coords_path)
     predicted_coords = data['all_coords_outputs']
     gt_coords = data['gt_coords_outputs']
-    return predicted_coords, gt_coords
+    min_coords_outputs = data['min_coords_outputs']
+    range_max_outputs = data['range_max_outputs']
+    return predicted_coords, gt_coords, min_coords_outputs, range_max_outputs
+
+def denormalize_coords_uniform(norm_coords, min_coords, range_max):
+    """
+    정규화된 좌표를 원래의 좌표로 되돌립니다.
+
+    Parameters:
+    - norm_coords (array-like): 정규화된 좌표.
+    - min_coords (array-like): 정규화 시 사용된 최소 좌표값.
+    - range_max (float): 정규화 시 사용된 최대 범위값.
+
+    Returns:
+    - ndarray: 원래의 좌표.
+    """
+    norm_coords = np.array(norm_coords)
+    min_coords = np.array(min_coords)
+    return norm_coords * range_max + min_coords
 
 def create_bounding_box(x, y, w, h, r):
     """
@@ -51,7 +69,7 @@ def create_bounding_box(x, y, w, h, r):
     
     return Polygon(rotated_corners)
 
-def visualize(predicted_coords, gt_coords, save_dir, sample_size=100):
+def visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, save_dir, sample_size=100):
     """
     Visualize the processed coordinates.
 
@@ -68,10 +86,16 @@ def visualize(predicted_coords, gt_coords, save_dir, sample_size=100):
         plt.figure(figsize=(8, 8))
         ax = plt.gca()
 
+        min_coords = min_coords_outputs[i]
+        range_max = range_max_outputs[i][0]
+
         layout_i = predicted_coords[i]  # Shape: (num_coords, 2)
         for layout_ii in layout_i:
             x, y, w, h, r, c = layout_ii
             bbox = create_bounding_box(x, y, w, h, r * 360)
+
+            bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
+            bbox = Polygon(bbox_coords)
 
             x, y = bbox.exterior.xy
             ax.fill(x, y, color='black')  # 색상 추가
@@ -91,10 +115,16 @@ def visualize(predicted_coords, gt_coords, save_dir, sample_size=100):
         plt.figure(figsize=(8, 8))
         ax = plt.gca()
 
+        min_coords = min_coords_outputs[i]
+        range_max = range_max_outputs[i][0]
+        
         layout_i = gt_coords[i]  # Shape: (num_coords, 2)
         for layout_ii in layout_i:
             x, y, w, h, r, c = layout_ii
             bbox = create_bounding_box(x, y, w, h, r * 360)
+
+            bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
+            bbox = Polygon(bbox_coords)
 
             x, y = bbox.exterior.xy
             ax.fill(x, y, color='black')  # 색상 추가
@@ -114,17 +144,17 @@ def visualize(predicted_coords, gt_coords, save_dir, sample_size=100):
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize Inference Results.')
-    parser.add_argument('--output_dir', type=str, default='inference_outputs/d_256_cb_512_st_8', help='Directory where inference results are saved.')
+    parser.add_argument('--output_dir', type=str, default='inference_outputs/d_256_cb_512_st_9', help='Directory where inference results are saved.')
     parser.add_argument('--save_dir', type=str, default='visualizations', help='Directory to save the visualization plots.')
     parser.add_argument('--sample_size', type=int, default=1000, help='Number of individual samples to visualize.')
     parser.add_argument('--aggregate', action='store_true', help='Whether to create an aggregate visualization.')
     args = parser.parse_args()
 
     model_name = args.output_dir.split('/')[1]
-    predicted_coords, gt_coords = load_data(args.output_dir)
+    predicted_coords, gt_coords, min_coords_outputs, range_max_outputs = load_data(args.output_dir)
 
     # Visualize individual samples
-    visualize(predicted_coords, gt_coords, args.save_dir + '/' + model_name, sample_size=args.sample_size)
+    visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, args.save_dir + '/' + model_name, sample_size=args.sample_size)
 
 if __name__ == "__main__":
     main()

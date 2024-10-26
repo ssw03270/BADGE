@@ -90,8 +90,66 @@ class TransformerEncoder(nn.Module):
 
         return enc_output
 
+# class Transformer(nn.Module):
+#     def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens, sample_tokens):
+#         """
+#         Initializes the Transformer model.
+#         """
+
+#         super(Transformer, self).__init__()
+
+#         self.d_model = d_model
+#         self.n_tokens = n_tokens
+#         self.sample_tokens = sample_tokens
+#         self.n = 5
+#         self.bin = 64
+
+#         # self.embed = nn.Embedding(self.bin, d_model)
+
+#         self.encoding = nn.Linear(self.n+1, d_model)
+#         self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
+#         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
+
+#         self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
+
+#         # self.bbox_fc = nn.Linear(d_model, self.bin, bias=False)
+#         self.coords_fc = nn.Linear(d_model, self.n + 1)
+
+#     def forward(self, batch):
+#         """
+#         Forward pass of the Transformer model.
+
+#         Processes coords features with attention mechanisms and positional encoding.
+#         """
+#         # bbox = batch.view(batch.shape[0], -1)
+#         # bbox = self.embed(bbox)
+#         x = self.encoding(batch)
+
+#         enc_output = self.encoder(x)
+#         # enc_output = self.encoder(bbox)
+
+#         # enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
+#         # enc_output = enc_output.view(x.shape[0], self.sample_tokens, -1)
+#         z, vq_loss, perplexity = self.vq(enc_output)
+#         # z = z.view(z.shape[0], 1, -1)
+#         # z = z.expand(-1, x.size(1), -1)  # (batch, seq length, feature dim)으로 복제
+
+#         dec_output = self.decoder(z)
+
+#         # dec_output = self.bbox_fc(dec_output)
+#         #
+#         # dec_output = torch.sigmoid(dec_output)
+#         #
+#         # return dec_output, vq_loss, perplexity
+
+#         coords_output = self.coords_fc(dec_output)
+#         coords_output = torch.sigmoid(coords_output)
+
+#         return coords_output, vq_loss, perplexity
+
 class Transformer(nn.Module):
-    def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens, sample_tokens):
+    def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens,
+                 sample_tokens):
         """
         Initializes the Transformer model.
         """
@@ -104,16 +162,16 @@ class Transformer(nn.Module):
         self.n = 5
         self.bin = 64
 
-        # self.embed = nn.Embedding(self.bin, d_model)
+        self.embed = nn.Embedding(self.bin, d_model)
 
-        self.encoding = nn.Linear(d_model * (self.n+1), d_model)
+        # self.encoding = nn.Linear(d_model * (self.n+1), d_model)
         self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
 
         self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
 
-        # self.bbox_fc = nn.Linear(d_model, self.bin, bias=False)
-        self.coords_fc = nn.Linear(d_model, self.n)
+        self.bbox_fc = nn.Linear(d_model, self.bin, bias=False)
+        # self.coords_fc = nn.Linear(d_model, self.n)
 
     def forward(self, batch):
         """
@@ -121,12 +179,12 @@ class Transformer(nn.Module):
 
         Processes coords features with attention mechanisms and positional encoding.
         """
-        # bbox = batch.view(batch.shape[0], -1)
-        # bbox = self.embed(bbox)
-        x = self.encoding(batch)
+        bbox = batch.view(batch.shape[0], -1)
+        bbox = self.embed(bbox)
+        # x = self.encoding(batch)
 
-        enc_output = self.encoder(x)
-        # enc_output = self.encoder(bbox)
+        # enc_output = self.encoder(x)
+        enc_output = self.encoder(bbox)
 
         # enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
         # enc_output = enc_output.view(x.shape[0], self.sample_tokens, -1)
@@ -136,74 +194,16 @@ class Transformer(nn.Module):
 
         dec_output = self.decoder(z)
 
-        # dec_output = self.bbox_fc(dec_output)
-        #
-        # dec_output = torch.sigmoid(dec_output)
-        #
-        # return dec_output, vq_loss, perplexity
+        dec_output = self.bbox_fc(dec_output)
 
-        coords_output = self.coords_fc(dec_output)
-        coords_output = torch.sigmoid(coords_output)
+        dec_output = torch.sigmoid(dec_output)
 
-        return coords_output, vq_loss, perplexity
+        return dec_output, vq_loss, perplexity
 
-# class Transformer(nn.Module):
-#     def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens,
-#                  sample_tokens):
-#         """
-#         Initializes the Transformer model.
-#         """
-#
-#         super(Transformer, self).__init__()
-#
-#         self.d_model = d_model
-#         self.n_tokens = n_tokens
-#         self.sample_tokens = sample_tokens
-#         self.n = 5
-#         self.bin = 64
-#
-#         self.embed = nn.Embedding(self.bin, d_model)
-#
-#         # self.encoding = nn.Linear(d_model * (self.n+1), d_model)
-#         self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
-#         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
-#
-#         self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
-#
-#         self.bbox_fc = nn.Linear(d_model, self.bin, bias=False)
-#         # self.coords_fc = nn.Linear(d_model, self.n)
-#
-#     def forward(self, batch):
-#         """
-#         Forward pass of the Transformer model.
-#
-#         Processes coords features with attention mechanisms and positional encoding.
-#         """
-#         bbox = batch.view(batch.shape[0], -1)
-#         bbox = self.embed(bbox)
-#         # x = self.encoding(batch)
-#
-#         # enc_output = self.encoder(x)
-#         enc_output = self.encoder(bbox)
-#
-#         # enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
-#         # enc_output = enc_output.view(x.shape[0], self.sample_tokens, -1)
-#         z, vq_loss, perplexity = self.vq(enc_output)
-#         # z = z.view(z.shape[0], 1, -1)
-#         # z = z.expand(-1, x.size(1), -1)  # (batch, seq length, feature dim)으로 복제
-#
-#         dec_output = self.decoder(z)
-#
-#         dec_output = self.bbox_fc(dec_output)
-#
-#         dec_output = torch.sigmoid(dec_output)
-#
-#         return dec_output, vq_loss, perplexity
-#
-#         # coords_output = self.coords_fc(dec_output)
-#         # coords_output = torch.sigmoid(coords_output)
-#
-#         # return coords_output, vq_loss, perplexity
+        # coords_output = self.coords_fc(dec_output)
+        # coords_output = torch.sigmoid(coords_output)
+
+        # return coords_output, vq_loss, perplexity
     def get_encoding_indices(self, batch):
         x = self.encoding(batch)
         enc_output = self.encoder(x)

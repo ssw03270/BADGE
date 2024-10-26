@@ -13,7 +13,7 @@ from transformer import Transformer
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
-    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_512_st_8/best_model.pt', help='Path to the model checkpoint.')
+    parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_512_st_9/best_model.pt', help='Path to the model checkpoint.')
     parser.add_argument('--output_dir', type=str, default='inference_outputs', help='Directory to save inference results.')
     parser.add_argument('--test_batch_size', type=int, default=5012, required=False, help='Batch size for testing.')
     parser.add_argument('--device', type=str, default=None, help='Device to run inference on (e.g., "cuda" or "cpu"). If not set, uses Accelerator default.')
@@ -41,7 +41,7 @@ def main():
     n_head = 8
     dropout = 0.1
     codebook_size, commitment_cost = 512, 0.25
-    n_tokens = 10
+    n_tokens = 60
     sample_tokens = 4
     model = Transformer(
         d_model=d_model,
@@ -80,18 +80,26 @@ def main():
 
             # 모델 Forward
             coords_output, vq_loss, perplexity = model(data)
+            coords_output = torch.argmax(coords_output, dim=-1).view(-1, 10, 6)
+
+            coords_output = coords_output.float()
+            data = data.float()
+
+            coords_output[:, :, :5] = coords_output[:, :, :5] / 63
+            data[:, :, :5] = data[:, :, :5] / 63
+
 
             # Post-process outputs if necessary
             # For example, convert logits to predicted tokens
             all_coords_outputs.append(coords_output.cpu().numpy())
             gt_coords_outputs.append(data.cpu().numpy())
-            min_coords_outputs.append(min_coords)
-            range_max_outputs.append(range_max)
+            min_coords_outputs.append(min_coords.cpu().numpy())
+            range_max_outputs.append(range_max.cpu().numpy())
 
     all_coords_outputs = np.concatenate(all_coords_outputs, axis=0)
     gt_coords_outputs = np.concatenate(gt_coords_outputs, axis=0)
-    min_coords_outputs = np.array(min_coords_outputs)
-    range_max_outputs = np.array(range_max_outputs)
+    min_coords_outputs = np.concatenate(min_coords_outputs, axis=0)
+    range_max_outputs = np.concatenate(range_max_outputs, axis=0)
 
 
     # Save the outputs

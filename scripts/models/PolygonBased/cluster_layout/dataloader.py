@@ -7,6 +7,8 @@ import random
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
+from shapely.geometry import Polygon, box
+from shapely.affinity import rotate
 
 
 def normalize_coords_uniform(coords, min_coords=None, range_max=None):
@@ -27,7 +29,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
         out_of_bounds = normalized_coords[(normalized_coords < -1) | (normalized_coords > 2)]
         print("범위를 벗어난 좌표 값:", out_of_bounds)
 
-    return normalized_coords, min_coords, range_max, out_of_bounds
+    return normalized_coords, min_coords, [range_max], out_of_bounds
 
 def denormalize_coords_uniform(norm_coords, min_coords, range_max):
     """
@@ -44,6 +46,79 @@ def denormalize_coords_uniform(norm_coords, min_coords, range_max):
     norm_coords = np.array(norm_coords)
     min_coords = np.array(min_coords)
     return norm_coords * range_max + min_coords
+
+def create_bounding_box(x, y, w, h, r):
+    """
+    주어진 중심점, 너비, 높이, 회전 각도를 사용하여 바운딩 박스를 생성합니다.
+    
+    Parameters:
+        x (float): 중심점 x 좌표
+        y (float): 중심점 y 좌표
+        w (float): 바운딩 박스의 너비
+        h (float): 바운딩 박스의 높이
+        r (float): 회전 각도 (도 단위)
+    
+    Returns:
+        Polygon: 회전된 바운딩 박스의 Polygon 객체
+    """
+    # 바운딩 박스의 네 모서리 좌표 계산
+    corners = np.array([
+        [-w / 2, -h / 2],
+        [w / 2, -h / 2],
+        [w / 2, h / 2],
+        [-w / 2, h / 2]
+    ])
+    
+    # 회전 행렬 생성
+    theta = np.radians(r)
+    rotation_matrix = np.array([
+        [np.cos(theta), -np.sin(theta)],
+        [np.sin(theta), np.cos(theta)]
+    ])
+    
+    # 모서리 회전 및 이동
+    rotated_corners = corners @ rotation_matrix.T + np.array([x, y])
+    
+    return Polygon(rotated_corners)
+
+def get_minimum_bounding_rectangle(coords):
+    """폴리곤의 최소 경계 사각형을 계산합니다."""
+    polygon = Polygon(coords)
+    min_rect = polygon.minimum_rotated_rectangle
+    return min_rect
+
+def get_rotation_angle(coords):
+    """
+    MBR의 긴 변이 x축에 평행하도록 회전하기 위한 각도를 계산합니다.
+    
+    Args:
+        coords (list of tuple): 폴리곤의 좌표 리스트.
+    
+    Returns:
+        float: 회전 각도(도 단위).
+    """
+    polygon = Polygon(coords)
+    min_rect = get_minimum_bounding_rectangle(polygon)
+    x, y = min_rect.exterior.coords.xy
+
+    # MBR은 첫 번째 점이 마지막 점과 동일하므로 첫 두 변을 검사
+    edge1 = np.array([x[1] - x[0], y[1] - y[0]])
+    edge2 = np.array([x[2] - x[1], y[2] - y[1]])
+
+    # 각 변의 길이 계산
+    length1 = np.linalg.norm(edge1)
+    length2 = np.linalg.norm(edge2)
+
+    # 더 긴 변을 선택
+    if length1 >= length2:
+        longer_edge = edge1
+    else:
+        longer_edge = edge2
+
+    # 회전 각도 계산 (x축과의 각도)
+    angle = np.degrees(np.arctan2(longer_edge[1], longer_edge[0]))
+
+    return angle % 360
 
 def load_pickle_file_with_cache(subfolder, folder_path):
     """
@@ -78,16 +153,32 @@ def load_pickle_file_with_cache(subfolder, folder_path):
             for cluster_id, bldg_layout_list in layouts.items():
                 cluster_region = regions[cluster_id]
                 _, min_coords, range_max, out_of_bounds = normalize_coords_uniform(cluster_region.exterior.coords)
+                
+                original_bldg_layout_list = []
+                for bldg_layout in bldg_layout_list:
+                    x, y, w, h, r, c = bldg_layout
+                    bbox = create_bounding_box(x, y, w, h, r * 360)
 
-                layout_dataset.append(bldg_layout_list)
-                min_coords_dataset.append(min_coords)
-                range_max_dataset.append(range_max)
+                    bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
+                    bbox = Polygon(bbox_coords)
 
-        return {
-            "layout_dataset": layout_dataset,
-            "min_coords_dataset": min_coords_dataset,
-            "range_max_dataset": range_max_dataset
-        }
+                    r = get_rotation_angle(list(bbox.exterior.coords))
+                    bbox = rotate(bbox, -r, origin='centroid', use_radians=False)
+
+                    minx, miny, maxx, maxy = bbox.bounds
+                    x = (minx + maxx) / 2
+                    y = (miny + maxy) / 2
+                    w = maxx - minx
+                    h = maxy - miny
+
+                    original_bldg_layout_list.append([x, y, w, h, r / 360, 1])
+
+                if len(min_coords) == 2 and len(range_max) == 1:
+                    layout_dataset.append(original_bldg_layout_list)
+                    min_coords_dataset.append(min_coords)
+                    range_max_dataset.append(range_max)
+
+        return [layout_dataset, min_coords_dataset, range_max_dataset]
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
         return []
@@ -124,9 +215,10 @@ class ClusterLayoutDataset(Dataset):
             # Map returns results in the order of subfolders
             results = list(tqdm(executor.map(load_func, subfolders), total=len(subfolders), desc="Loading pickle files with caching"))
             for result in results:
-                layout_dataset += result['layout_dataset']
-                min_coords_dataset += result['min_coords_dataset']
-                range_max_dataset += result['range_max_dataset']
+                if len(result) == 3:
+                    layout_dataset += result[0]
+                    min_coords_dataset += result[1]
+                    range_max_dataset += result[2]
 
         # 패딩할 최대 빌딩 개수
         MAX_BUILDINGS = 10
@@ -162,6 +254,8 @@ class ClusterLayoutDataset(Dataset):
 
         self.layout_dataset = final_padded_data_shuffled
 
+        print(len(self.min_coords_dataset), len(self.range_max_dataset), len(self.layout_dataset))
+
         # Compute the split sizes
         total_files = len(self.layout_dataset)
         train_split = int(0.7 * total_files)
@@ -196,6 +290,8 @@ class ClusterLayoutDataset(Dataset):
         """
         data = self.layout_dataset[idx] # seq, 6
 
+        # if self.data_type == 'test':
+        #     return torch.tensor(data, dtype=torch.float32), self.min_coords_dataset[idx], self.range_max_dataset[idx]
         # return torch.tensor(data, dtype=torch.float32, requires_grad=True)
     
         discrete_data = data.copy()
