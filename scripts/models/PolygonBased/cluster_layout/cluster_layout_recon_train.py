@@ -153,7 +153,7 @@ def main():
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
 
         # 최저 검증 손실 모델 저장
-        if accelerator.is_main_process and val_loss < best_val_loss:
+        if accelerator.is_main_process and val_loss / len(val_dataloader) < best_val_loss:
             best_val_loss = val_loss / len(val_dataloader)
             best_epoch = epoch + 1
             best_model_dir = f"vq_model_checkpoints/{args.model_name}/best_model.pt"
