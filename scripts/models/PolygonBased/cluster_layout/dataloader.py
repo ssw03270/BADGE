@@ -64,9 +64,6 @@ class ClusterLayoutDataset(Dataset):
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
 
-        self.data_length = len(self.pkl_files)
-        print(f"총 {self.data_length}개의 데이터를 로드합니다.")
-
         # 필요한 키만 메모리에 적재
         self.data_list = []
         for file_path in tqdm(self.pkl_files, desc="데이터를 메모리에 적재 중"):
@@ -98,6 +95,9 @@ class ClusterLayoutDataset(Dataset):
             except Exception as e:
                 print(f"{file_path} 로드 중 오류 발생: {e}")
                 continue  # 해당 파일 건너뜀
+
+        self.data_length = len(self.data_list)
+        print(f"총 {self.data_length}개의 데이터를 로드합니다.")
 
     def __getitem__(self, idx):
         """
