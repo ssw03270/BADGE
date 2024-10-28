@@ -7,12 +7,11 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 class VectorQuantizer(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost, sample_tokens):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost):
         super(VectorQuantizer, self).__init__()
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
         self.commitment_cost = commitment_cost
-        self.sample_tokens = sample_tokens
 
         # self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim // sample_tokens)
         self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim)

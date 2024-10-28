@@ -93,7 +93,7 @@ class TransformerEncoder(nn.Module):
         return enc_output
 
 class ContinuousTransformer(nn.Module):
-    def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens, sample_tokens):
+    def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens):
         """
         Initializes the ContinuousTransformer model.
         """
@@ -102,13 +102,12 @@ class ContinuousTransformer(nn.Module):
 
         self.d_model = d_model
         self.n_tokens = n_tokens
-        self.sample_tokens = sample_tokens
 
         self.encoding = nn.Linear(6, d_model)
         self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
 
-        self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
+        self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost)
 
         self.coords_fc = nn.Linear(d_model, 6)
 
@@ -134,8 +133,7 @@ class ContinuousTransformer(nn.Module):
         return coords_output, loss_coords, vq_loss, perplexity
 
 class DiscreteTransformer(nn.Module):
-    def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens,
-                 sample_tokens):
+    def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens):
         """
         Initializes the DiscreteTransformer model.
         """
@@ -144,7 +142,6 @@ class DiscreteTransformer(nn.Module):
 
         self.d_model = d_model
         self.n_tokens = n_tokens * 6
-        self.sample_tokens = sample_tokens
         self.bin = 64
 
         self.embed = nn.Embedding(self.bin, d_model)
@@ -152,7 +149,7 @@ class DiscreteTransformer(nn.Module):
         self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
         self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
 
-        self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost, sample_tokens)
+        self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost)
 
         self.bbox_fc = nn.Linear(d_model, self.bin, bias=False)
 
