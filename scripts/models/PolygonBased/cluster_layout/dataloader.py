@@ -3,13 +3,12 @@ from torch.utils.data import Dataset
 import numpy as np
 import os
 import pickle
-import random
+import glob
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 from shapely.geometry import Polygon, box
 from shapely.affinity import rotate
-
 
 def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     if min_coords is not None and range_max is not None:
@@ -31,161 +30,8 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
 
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
-def denormalize_coords_uniform(norm_coords, min_coords, range_max):
-    """
-    정규화된 좌표를 원래의 좌표로 되돌립니다.
-
-    Parameters:
-    - norm_coords (array-like): 정규화된 좌표.
-    - min_coords (array-like): 정규화 시 사용된 최소 좌표값.
-    - range_max (float): 정규화 시 사용된 최대 범위값.
-
-    Returns:
-    - ndarray: 원래의 좌표.
-    """
-    norm_coords = np.array(norm_coords)
-    min_coords = np.array(min_coords)
-    return norm_coords * range_max + min_coords
-
-def create_bounding_box(x, y, w, h, r):
-    """
-    주어진 중심점, 너비, 높이, 회전 각도를 사용하여 바운딩 박스를 생성합니다.
-    
-    Parameters:
-        x (float): 중심점 x 좌표
-        y (float): 중심점 y 좌표
-        w (float): 바운딩 박스의 너비
-        h (float): 바운딩 박스의 높이
-        r (float): 회전 각도 (도 단위)
-    
-    Returns:
-        Polygon: 회전된 바운딩 박스의 Polygon 객체
-    """
-    # 바운딩 박스의 네 모서리 좌표 계산
-    corners = np.array([
-        [-w / 2, -h / 2],
-        [w / 2, -h / 2],
-        [w / 2, h / 2],
-        [-w / 2, h / 2]
-    ])
-    
-    # 회전 행렬 생성
-    theta = np.radians(r)
-    rotation_matrix = np.array([
-        [np.cos(theta), -np.sin(theta)],
-        [np.sin(theta), np.cos(theta)]
-    ])
-    
-    # 모서리 회전 및 이동
-    rotated_corners = corners @ rotation_matrix.T + np.array([x, y])
-    
-    return Polygon(rotated_corners)
-
-def get_minimum_bounding_rectangle(coords):
-    """폴리곤의 최소 경계 사각형을 계산합니다."""
-    polygon = Polygon(coords)
-    min_rect = polygon.minimum_rotated_rectangle
-    return min_rect
-
-def get_rotation_angle(coords):
-    """
-    MBR의 긴 변이 x축에 평행하도록 회전하기 위한 각도를 계산합니다.
-    
-    Args:
-        coords (list of tuple): 폴리곤의 좌표 리스트.
-    
-    Returns:
-        float: 회전 각도(도 단위).
-    """
-    polygon = Polygon(coords)
-    min_rect = get_minimum_bounding_rectangle(polygon)
-    x, y = min_rect.exterior.coords.xy
-
-    # MBR은 첫 번째 점이 마지막 점과 동일하므로 첫 두 변을 검사
-    edge1 = np.array([x[1] - x[0], y[1] - y[0]])
-    edge2 = np.array([x[2] - x[1], y[2] - y[1]])
-
-    # 각 변의 길이 계산
-    length1 = np.linalg.norm(edge1)
-    length2 = np.linalg.norm(edge2)
-
-    # 더 긴 변을 선택
-    if length1 >= length2:
-        longer_edge = edge1
-    else:
-        longer_edge = edge2
-
-    # 회전 각도 계산 (x축과의 각도)
-    angle = np.degrees(np.arctan2(longer_edge[1], longer_edge[0]))
-
-    return angle % 360
-
-def load_pickle_file_with_cache(subfolder, folder_path):
-    """
-    Loads and processes a single pickle file corresponding to a subfolder.
-
-    Parameters:
-    - subfolder (str): The name of the subfolder.
-    - folder_path (str): The base path where subfolders are located.
-
-    Returns:
-    - list: A list of clusters extracted from the pickle file.
-    """
-    file_path = os.path.join(folder_path, subfolder,
-                             f'train_codebook/{subfolder}_graph_prep_list_hierarchical_10_fixed.pkl')
-    if not os.path.exists(file_path):
-        return []
-
-    try:
-        with open(file_path, 'rb') as f:
-            data = pickle.load(f)
-        dataset = [list(d['cluster_id2normalized_bldg_layout_bldg_bbox_list'].values()) for d in data if
-                   'cluster_id2normalized_bldg_layout_bldg_bbox_list' in d]
-        dataset = [cluster for boundary in dataset for cluster in boundary]
-
-        layout_dataset = []
-        min_coords_dataset = []
-        range_max_dataset = []
-        for data_idx in range(len(data)):
-            regions = data[data_idx]['cluster_id2cluster_bldg_bbox']
-            layouts = data[data_idx]['cluster_id2normalized_bldg_layout_bldg_bbox_list']
-
-            for cluster_id, bldg_layout_list in layouts.items():
-                cluster_region = regions[cluster_id]
-                _, min_coords, range_max, out_of_bounds = normalize_coords_uniform(cluster_region.exterior.coords)
-                
-                original_bldg_layout_list = []
-                for bldg_layout in bldg_layout_list:
-                    x, y, w, h, r, c = bldg_layout
-                    bbox = create_bounding_box(x, y, w, h, r * 360)
-
-                    bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
-                    bbox = Polygon(bbox_coords)
-
-                    r = get_rotation_angle(list(bbox.exterior.coords))
-                    bbox = rotate(bbox, -r, origin='centroid', use_radians=False)
-
-                    minx, miny, maxx, maxy = bbox.bounds
-                    x = (minx + maxx) / 2
-                    y = (miny + maxy) / 2
-                    w = maxx - minx
-                    h = maxy - miny
-
-                    original_bldg_layout_list.append([x, y, w, h, r / 360, 1])
-
-                if len(min_coords) == 2 and len(range_max) == 1:
-                    layout_dataset.append(original_bldg_layout_list)
-                    min_coords_dataset.append(min_coords)
-                    range_max_dataset.append(range_max)
-
-        return [layout_dataset, min_coords_dataset, range_max_dataset]
-    except Exception as e:
-        print(f"Error loading {file_path}: {e}")
-        return []
-
-
 class ClusterLayoutDataset(Dataset):
-    def __init__(self, data_type='train', user_name='ssw03270'):
+    def __init__(self, data_type='train', user_name='ssw03270', coords_type='continuous'):
         """
         Initializes an instance of the ClusterLayoutDataset class.
 
@@ -196,86 +42,33 @@ class ClusterLayoutDataset(Dataset):
         super(ClusterLayoutDataset, self).__init__()
 
         self.data_type = data_type
+        self.coords_type = coords_type
 
         if data_type == 'test':
             self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
         else:
-            self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
-        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))][:]
+            # self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
+            self.folder_path = f'/data2/local_datasets/CITY2024/Our_dataset_divided_without_segmentation_mask'
+        self.pkl_files = glob.glob(os.path.join(self.folder_path, '**', '*.pkl'), recursive=True)
+        self.pkl_files = np.array(self.pkl_files)
 
-        layout_dataset = []
-        min_coords_dataset = []
-        range_max_dataset = []
-
-        # Create a partial function with fixed folder_path
-        load_func = partial(load_pickle_file_with_cache, folder_path=self.folder_path)
-
-        # Use ProcessPoolExecutor.map for ordered loading
-        with ProcessPoolExecutor(max_workers=8) as executor:
-            # Map returns results in the order of subfolders
-            results = list(tqdm(executor.map(load_func, subfolders), total=len(subfolders), desc="Loading pickle files with caching"))
-            for result in results:
-                if len(result) == 3:
-                    layout_dataset += result[0]
-                    min_coords_dataset += result[1]
-                    range_max_dataset += result[2]
-
-        # 패딩할 최대 빌딩 개수
-        MAX_BUILDINGS = 10
-        PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
-        # NumPy 배열로 변환
-        # 우선 빌딩 개수가 다른 리스트를 객체 배열로 만듭니다
-        data_np = np.empty(len(layout_dataset), dtype=object)
-        for i, cluster_boundary in enumerate(layout_dataset):
-            data_np[i] = np.array(cluster_boundary)
-        # 패딩 수행
-        padded_data_np = []
-        for cluster_boundary in tqdm(data_np):
-            current_building_count = cluster_boundary.shape[0]
-            if current_building_count < MAX_BUILDINGS:
-                padding_needed = MAX_BUILDINGS - current_building_count
-                # 패딩할 배열 생성
-                padding_array = np.array([PADDING_BUILDING] * padding_needed)
-                # 패딩된 배열 결합
-                cluster_boundary_padded = np.vstack((cluster_boundary, padding_array))
-            else:
-                # 빌딩 개수가 이미 최대인 경우 필요시 자름
-                cluster_boundary_padded = cluster_boundary[:MAX_BUILDINGS]
-            padded_data_np.append(cluster_boundary_padded)
-        # 최종 배열로 변환 (모든 클러스터-바운더리가 동일한 크기를 가짐)
-        final_padded_data = np.stack(padded_data_np)
-        # Shuffle the pkl files to ensure random split
-
-        shuffled_indices = np.random.permutation(final_padded_data.shape[0])
-        final_padded_data_shuffled = final_padded_data[shuffled_indices]
-
-        self.min_coords_dataset = np.array(min_coords_dataset)[shuffled_indices]
-        self.range_max_dataset = np.array(range_max_dataset)[shuffled_indices]
-
-        self.layout_dataset = final_padded_data_shuffled
-
-        print(len(self.min_coords_dataset), len(self.range_max_dataset), len(self.layout_dataset))
+        shuffled_indices = np.random.permutation(self.pkl_files.shape[0])
+        self.pkl_files = self.pkl_files[shuffled_indices]
 
         # Compute the split sizes
-        total_files = len(self.layout_dataset)
+        total_files = len(self.pkl_files)
         train_split = int(0.7 * total_files)
         val_split = int(0.2 * total_files)
 
         # Split the dataset
         if data_type == 'train':
-            self.layout_dataset = self.layout_dataset[:train_split]
-            self.min_coords_dataset = self.min_coords_dataset[:train_split]
-            self.range_max_dataset = self.range_max_dataset[:train_split]
+            self.pkl_files = self.pkl_files[:train_split]
         elif data_type == 'val':
-            self.layout_dataset = self.layout_dataset[train_split:train_split + val_split]
-            self.min_coords_dataset = self.min_coords_dataset[train_split:train_split + val_split]
-            self.range_max_dataset = self.range_max_dataset[train_split:train_split + val_split]
+            self.pkl_files = self.pkl_files[train_split:train_split + val_split]
         elif data_type == 'test':
-            self.layout_dataset = self.layout_dataset[train_split + val_split:]
-            self.min_coords_dataset = self.min_coords_dataset[train_split + val_split:]
-            self.range_max_dataset = self.range_max_dataset[train_split + val_split:]
+            self.pkl_files = self.pkl_files[train_split + val_split:]
 
-        self.data_length = len(self.layout_dataset)
+        self.data_length = len(self.pkl_files)
         print(self.data_length)
 
     def __getitem__(self, idx):
@@ -288,21 +81,48 @@ class ClusterLayoutDataset(Dataset):
         Returns:
         - dict: A dictionary containing the padded matrices and padding masks for boundary adjacency matrix, building adjacency matrix, and boundary-building adjacency matrix, as well as the boundary positions and the number of boundaries and buildings. For test data, it also returns the filename of the loaded pickle file.
         """
-        data = self.layout_dataset[idx] # seq, 6
+        with open(self.pkl_files[idx], 'rb') as f:
+            data = pickle.load(f)
 
-        # if self.data_type == 'test':
-        #     return torch.tensor(data, dtype=torch.float32), self.min_coords_dataset[idx], self.range_max_dataset[idx]
-        # return torch.tensor(data, dtype=torch.float32, requires_grad=True)
-    
-        discrete_data = data.copy()
-        discrete_data[:, :5] = np.floor(data[:, :5] * 63).astype(int)
-        discrete_data[:, :5] = np.clip(discrete_data[:, :5], 0, 63)
+        regions = data['cluster_id2cluster_bldg_bbox']
+        layouts = data['cluster_id2normalized_bldg_layout_bldg_bbox_list']
+            
+        MAX_BUILDINGS = 10
+        PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
 
-        if self.data_type == 'test':
-            return torch.tensor(discrete_data, dtype=torch.long), self.min_coords_dataset[idx], self.range_max_dataset[idx]
+        bldg_layout_list = []
+        min_coords_list = []
+        range_max_list = []
 
-        return torch.tensor(discrete_data, dtype=torch.long)
+        for cluster_id, bldg_layouts in layouts.items():
+            cluster_region = regions[cluster_id]
+            _, min_coords, range_max, _ = normalize_coords_uniform(cluster_region.exterior.coords)
 
+            bldg_layouts = np.array(bldg_layouts)
+            current_building_count = bldg_layouts.shape[0]
+            if current_building_count < MAX_BUILDINGS:
+                padding_needed = MAX_BUILDINGS - current_building_count
+                padding_array = np.array([PADDING_BUILDING] * padding_needed)
+                bldg_layouts = np.vstack((bldg_layouts, padding_array))
+            else:
+                bldg_layouts = bldg_layouts[:MAX_BUILDINGS]
+
+            bldg_layout_list.append(bldg_layouts)
+            min_coords_list.append(min_coords)
+            range_max_list.append([range_max])
+
+        bldg_layout_list = np.array(bldg_layout_list)
+        min_coords_list = np.array(min_coords_list)
+        range_max_list = np.array(range_max_list)
+
+        if self.coords_type == 'continuous':
+            return torch.tensor(bldg_layout_list, dtype=torch.float32), min_coords_list, range_max_list
+        
+        elif self.coords_type == 'discrete':
+            bldg_layout_list[:, :5] = np.floor(bldg_layout_list[:, :5] * 63).astype(int)
+            bldg_layout_list[:, :5] = np.clip(bldg_layout_list[:, :5], 0, 63)
+
+            return torch.tensor(bldg_layout_list, dtype=torch.long), min_coords_list, range_max_list
 
     def __len__(self):
         """

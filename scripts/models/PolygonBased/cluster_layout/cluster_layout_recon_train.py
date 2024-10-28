@@ -11,7 +11,24 @@ from accelerate.utils import set_seed
 from tqdm.auto import tqdm
 
 from dataloader import ClusterLayoutDataset
-from transformer import Transformer
+from transformer import ContinuousTransformer, DiscreteTransformer
+
+
+def custom_collate_fn(batch):
+    # 배치에서 각 데이터를 분리합니다.
+    bldg_layout_list = [item[0] for item in batch]  # 건물 레이아웃 데이터
+    min_coords_list = [item[1] for item in batch]   # 최소 좌표
+    range_max_list = [item[2] for item in batch]    # 최대 범위
+
+    # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
+    # 건물 레이아웃 데이터는 텐서로 변환
+    bldg_layout_tensor = torch.stack(bldg_layout_list)
+
+    # min_coords_list와 range_max_list는 각 배치 내의 배열이 같은 길이를 가지지 않을 수 있으므로 패딩을 추가
+    min_coords_tensor = torch.tensor(min_coords_list, dtype=torch.float32)
+    range_max_tensor = torch.tensor(range_max_list, dtype=torch.float32)
+
+    return bldg_layout_tensor, min_coords_tensor, range_max_tensor
 
 # 학습 코드
 def main():
@@ -25,8 +42,8 @@ def main():
     parser.add_argument('--weight_decay', type=float, default=0.02, required=False, help='Weight decay.')
     parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
-    parser.add_argument('--sample_tokens', type=int, default=8, required=False, help='Number of sample tokens.')
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
+    parser.add_argument("--coords_type", type=str, default="continuous", help="coordinate type")
     args = parser.parse_args()
 
     accelerator = Accelerator()  # 여기서 설정
@@ -38,16 +55,16 @@ def main():
         wandb.init(
             project="codebook_train",  # Replace with your WandB project name
             config=vars(args),            # Logs all hyperparameters
-            name=f"run_d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}",  # Optional: Name your run
+            name=f"run_d_{args.d_model}_cb_{args.codebook_size}_type_{args.coords_type}",  # Optional: Name your run
             save_code=True                # Optional: Save your code with the run
         )
 
     # 데이터셋 로드
-    train_dataset = ClusterLayoutDataset(data_type="train", user_name=args.user_name)
-    train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
+    train_dataset = ClusterLayoutDataset(data_type="train", user_name=args.user_name, coords_type=args.coords_type)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=custom_collate_fn)
     
-    val_dataset = ClusterLayoutDataset(data_type="val", user_name=args.user_name)
-    val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, shuffle=False)
+    val_dataset = ClusterLayoutDataset(data_type="val", user_name=args.user_name, coords_type=args.coords_type)
+    val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
     # 모델 초기화
     d_inner = args.d_model * 4
@@ -55,10 +72,13 @@ def main():
     n_head = 8
     dropout = 0.1
     commitment_cost = 0.25
-    n_tokens = 60
-    sample_tokens = args.sample_tokens
-    model = Transformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
-                        codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens, sample_tokens=sample_tokens)
+    n_tokens = 10
+    if args.coords_type == "continuous":
+        model = ContinuousTransformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
+                                      codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
+    elif args.coords_type == "discrete":
+        model = DiscreteTransformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
+                                    codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
 
     # 옵티마이저 및 스케줄러 설정
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -67,9 +87,6 @@ def main():
     # Accelerator 준비
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)
     val_dataloader = accelerator.prepare(val_dataloader)
-
-    bbox_loss_fn = nn.CrossEntropyLoss()
-    category_loss_fn = nn.BCEWithLogitsLoss()  # 이진 분류 손실 (카테고리)
 
     best_val_loss = float('inf')
     best_epoch = 0
@@ -82,23 +99,14 @@ def main():
 
         for batch in progress_bar:
             optimizer.zero_grad()
+            data = batch[0]
+            min_coords = batch[1]
+            range_max = batch[2]
 
             # # 모델 Forward
-            bbox_output, vq_loss, perplexity = model(batch)
+            bbox_output, recon_loss, vq_loss, perplexity = model(data)
 
-            bbox_output_flat = bbox_output.view(-1, 64)
-            # bbox_labels: (batch, num_objects, 5) -> (batch * num_objects * 5)
-            bbox_labels_flat = batch.view(-1)
-            # CrossEntropyLoss 계산 (개별 손실)
-            bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
-
-            loss = bbox_loss + vq_loss
-            # coords_output, vq_loss, perplexity = model(batch)
-            # loss_coords = F.mse_loss(coords_output, batch.clone())
-            # if vq_loss is not None:
-            #     loss = loss_coords + vq_loss
-            # else:
-            #     loss = loss_coords
+            loss = recon_loss + vq_loss
 
             # 역전파 및 최적화
             accelerator.backward(loss)
@@ -107,65 +115,25 @@ def main():
 
             progress_bar.set_postfix({'loss': total_loss / (progress_bar.n + 1), 'lr': optimizer.param_groups[0]['lr']})
 
-        # Log training loss to WandB
-        if accelerator.is_main_process:
-            avg_train_loss = total_loss / len(train_dataloader)
-            wandb.log({"train_epoch": epoch + 1, "train_loss": avg_train_loss})
-
         # 검증 단계 (옵션)
         model.eval()
         val_loss = 0
-        val_loss_bbox = 0
+        val_recon_loss = 0
         val_loss_vq = 0
         val_loss_coords = 0
         with torch.no_grad():
             for batch in val_dataloader:
-                # 모델 Forward
-                bbox_output, vq_loss, perplexity = model(batch)
+                data = batch[0]
+                min_coords = batch[1]
+                range_max = batch[2]
 
-                bbox_output_flat = bbox_output.view(-1, 64)
-                # bbox_labels: (batch, num_objects, 5) -> (batch * num_objects * 5)
-                bbox_labels_flat = batch.view(-1)
-                # CrossEntropyLoss 계산 (개별 손실)
-                bbox_loss = bbox_loss_fn(bbox_output_flat, bbox_labels_flat)
+                bbox_output, recon_loss, vq_loss, perplexity = model(data)
 
-                loss = bbox_loss + vq_loss
+                loss = recon_loss + vq_loss
 
                 val_loss += loss.item()
-                val_loss_bbox += bbox_loss
+                val_recon_loss += recon_loss
                 val_loss_vq += vq_loss
-
-                # coords_output, vq_loss, perplexity = model(batch)
-                
-                # loss_coords = F.mse_loss(coords_output, batch.clone())
-                # if vq_loss is not None:
-                #     loss =  loss_coords + vq_loss
-                # else:
-                #     loss = loss_coords
-
-                # val_loss += loss.item()
-                # val_loss_coords += loss_coords
-                # if vq_loss is not None:
-                #     val_loss_vq += vq_loss
-                
-        if accelerator.is_main_process:
-            avg_val_loss = val_loss / len(val_dataloader)
-            avg_val_bbox = val_loss_bbox / len(val_dataloader)
-            avg_val_coords = val_loss_coords / len(val_dataloader)
-            avg_val_vq = val_loss_vq / len(val_dataloader) if vq_loss is not None else None
-
-            wandb.log({
-                "validation_loss": avg_val_loss,
-                "validation_bbox_loss": avg_val_bbox,
-                # "validation_coords_loss": avg_val_coords,
-                "validation_vq_loss": avg_val_vq,
-                "val_epoch": epoch + 1
-            })
-
-            print(f"Validation Loss: {avg_val_loss}")
-            print(f"Validation Bbox Loss: {avg_val_bbox}")
-            print(f"Validation Coords Loss: {avg_val_coords}")
-            print(f"Validation VQ Loss: {avg_val_vq}")
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
@@ -176,14 +144,33 @@ def main():
 
         # 최저 검증 손실 모델 저장
         if accelerator.is_main_process and val_loss < best_val_loss:
-            best_val_loss = val_loss
+            best_val_loss = val_loss / len(val_dataloader)
             best_epoch = epoch + 1
             best_model_dir = f"vq_model_checkpoints/d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)
+                
+        if accelerator.is_main_process:
+            avg_train_loss = total_loss / len(train_dataloader)
+            avg_val_loss = val_loss / len(val_dataloader)
+            avg_val_recon = val_recon_loss / len(val_dataloader)
+            avg_val_coords = val_loss_coords / len(val_dataloader)
+            avg_val_vq = val_loss_vq / len(val_dataloader) if vq_loss is not None else None
 
-            print(f"Best Validation Loss: {best_val_loss / len(val_dataloader)}, Best Epoch: {best_epoch}")
+            wandb.log({
+                "train_loss": avg_train_loss,
+                "validation_loss": avg_val_loss,
+                "validation_recon_loss": avg_val_recon,
+                "validation_vq_loss": avg_val_vq,
+                "best_epoch": best_epoch
+            })
+
+            print(f"Validation Loss: {avg_val_loss}")
+            print(f"Validation Recon Loss: {avg_val_recon}")
+            print(f"Validation Coords Loss: {avg_val_coords}")
+            print(f"Validation VQ Loss: {avg_val_vq}")
+            print(f"Best Validation Loss: {best_val_loss}, Best Epoch: {best_epoch}")
 
 if __name__ == "__main__":
     main()

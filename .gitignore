@@ -168,3 +168,4 @@ scripts/token.py
 /inference_outputs
 /visualizations
 /vq_model_checkpoints
+/metric_result

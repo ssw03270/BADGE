@@ -22,6 +22,33 @@ import networkx as nx
 from collections import defaultdict
 from rtree import index
 import copy
+from PIL import Image, ImageDraw
+
+def create_mask(polygon, image_size=(64, 64)):
+    """
+    노멀라이즈된 shapely 폴리곤을 이미지 마스크로 변환합니다.
+
+    Parameters:
+    - polygon: shapely.geometry.Polygon, 0과 1 사이로 노멀라이즈된 좌표를 가진 폴리곤
+    - image_size: tuple, 생성할 마스크 이미지의 크기 (width, height)
+
+    Returns:
+    - mask: numpy.ndarray, 마스크 이미지 (0과 1로 구성된 배열)
+    """
+    width, height = image_size
+
+    # 폴리곤의 좌표를 이미지 크기에 맞게 스케일링
+    scaled_coords = [(x * width, (1 - y) * height) for x, y in polygon.exterior.coords]
+
+    # PIL 이미지 생성 (흰색 배경)
+    img = Image.new('L', image_size, 0)
+    ImageDraw.Draw(img).polygon(scaled_coords, outline=1, fill=1)
+
+    # numpy 배열로 변환
+    mask = np.array(img)
+
+    return mask
+
 
 def divide_linestring_into_segments(linestring_coords, unit_length):
     """
@@ -244,30 +271,34 @@ def create_bounding_box(x, y, w, h, r):
     return Polygon(rotated_corners)
 
 dataset_path = "Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/COHO_dataset"
-output_dataset_path = "Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset"
+# output_dataset_path = "Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset_divided"
+output_dataset_path = "Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset_divided_without_segmentation_mask"
 subfolders = [f for f in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, f))]
 
 debug = False
 def process_folder(folder):
     error_count = 0
-    output_path = os.path.join(output_dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_hierarchical_10_fixed.pkl')
-    # if os.path.exists(output_path):
-    #     print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
-    #     return  # 이미 처리된 경우 건너뜁니다.
-    
-    os.makedirs(os.path.join(output_dataset_path, folder, f'preprocessed/'), exist_ok=True)  # output 디렉토리 생성
-
     data_path = os.path.join(dataset_path, folder, f'graph/{folder}_graph_prep_list_hierarchical_10_fixed.pkl')
     if not os.path.exists(data_path):
         print(f"{data_path} 파일이 존재하지 않습니다. 건너뜁니다.")
         return
+
+    output_path = os.path.join(output_dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_hierarchical_10_fixed')
+    # if os.path.exists(output_path):
+    #     print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
+    #     return  # 이미 처리된 경우 건너뜁니다.
+    
     print(f"{folder} 파일을 처리하는 중입니다. ")
 
     with open(data_path, 'rb') as f:
         data_list = pickle.load(f)
 
-    new_data_list = []
-    for data in tqdm(data_list):
+    for data_idx, data in enumerate(tqdm(data_list)):
+        os.makedirs(os.path.join(output_dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_hierarchical_10_fixed'), exist_ok=True)  # output 디렉토리 생성
+        output_path = os.path.join(output_dataset_path, folder, f'preprocessed/{folder}_graph_prep_list_hierarchical_10_fixed/{data_idx}.pkl')
+        # if os.path.exists(output_path):
+        #     # print(f"{output_path} 파일이 이미 존재합니다. 건너뜁니다.")
+        #     continue  # 이미 처리된 경우 건너뜁니다.
         try:
             is_stop = False
 
@@ -555,7 +586,56 @@ def process_folder(folder):
                                 cluster_id2face_blk_linestring_list[cluster_id].append(blk_line)
                             else:
                                 cluster_id2face_blk_linestring_list[cluster_id] = [blk_line]
+
+            cluster_id2normalized_bldg_layout_blk_list = {}
+            cluster_id2normalized_bldg_layout_cluster_list = {}
+            cluster_id2normalized_bldg_layout_bldg_bbox_list = {}
+            for cluster_id, bldg_id_list in cluster_id2bldg_id_list.items():
+                    
+                for bldg_id in bldg_id_list:
+                    bldg_layout = bldg_id2normalized_bldg_layout_blk[bldg_id]
+                    x, y, w, h, r = bldg_layout
+                    gt_bldg_layout = [x, y, w, h, r / 360, 1]
+
+                    if cluster_id in cluster_id2normalized_bldg_layout_blk_list:
+                        cluster_id2normalized_bldg_layout_blk_list[cluster_id].append(gt_bldg_layout)
+                    else:
+                        cluster_id2normalized_bldg_layout_blk_list[cluster_id] = [gt_bldg_layout]
+
+                    bldg_layout = bldg_id2normalized_bldg_layout_cluster[bldg_id]
+                    x, y, w, h, r = bldg_layout
+                    gt_bldg_layout = [x, y, w, h, r / 360, 1]
+
+                    if cluster_id in cluster_id2normalized_bldg_layout_cluster_list:
+                        cluster_id2normalized_bldg_layout_cluster_list[cluster_id].append(gt_bldg_layout)
+                    else:
+                        cluster_id2normalized_bldg_layout_cluster_list[cluster_id] = [gt_bldg_layout]
+                        
+                    bldg_layout = bldg_id2normalized_bldg_layout_bldg_bbox[bldg_id]
+                    x, y, w, h, r = bldg_layout
+                    gt_bldg_layout = [x, y, w, h, r / 360, 1]
+
+                    if cluster_id in cluster_id2normalized_bldg_layout_bldg_bbox_list:
+                        cluster_id2normalized_bldg_layout_bldg_bbox_list[cluster_id].append(gt_bldg_layout)
+                    else:
+                        cluster_id2normalized_bldg_layout_bldg_bbox_list[cluster_id] = [gt_bldg_layout]
+
+            cluster_id2cluster_mask = {}
+            blk_image_mask = np.zeros((224, 224))
+            for cluster_id, region_id_list in cluster_id2region_id_list.items():
+                cluster_image_mask = np.zeros((224, 224))
+                for region_id in region_id_list:
+                    region_polygon = region_id2region_polygon[region_id]
+                                    
+                    # 마스크 생성
+                    mask = create_mask(region_polygon, image_size=(224, 224))
+                    cluster_image_mask = np.clip(cluster_image_mask + mask, 0, 1)
+                    blk_image_mask = np.clip(blk_image_mask + mask, 0, 1)
+
+                cluster_id2cluster_mask[cluster_id] = cluster_image_mask
+                
             if is_stop:
+                print(data_idx, "error")
                 continue
 
             new_data = data
@@ -566,14 +646,22 @@ def process_folder(folder):
             new_data['bldg_id2normalized_bldg_layout_blk'] = bldg_id2normalized_bldg_layout_blk
             new_data['bldg_id2normalized_bldg_layout_cluster'] = bldg_id2normalized_bldg_layout_cluster
             new_data['bldg_id2normalized_bldg_layout_bldg_bbox'] = bldg_id2normalized_bldg_layout_bldg_bbox
+
             new_data['cluster_id2bldg_id_list'] = cluster_id2bldg_id_list
             new_data['cluster_id2cluster_bbox'] = cluster_id2cluster_bbox
             new_data['cluster_id2cluster_bldg_bbox'] = cluster_id2cluster_bldg_bbox
             new_data['cluster_id2region_id_list'] = cluster_id2region_id_list
             new_data['cluster_id2face_blk_linestring_list'] = cluster_id2face_blk_linestring_list
+
             new_data['region_id2cluster_id_list'] = region_id2cluster_id_list
             new_data['region_id2region_polygon'] = region_id2region_polygon
-            new_data_list.append(new_data)
+
+            new_data['cluster_id2normalized_bldg_layout_blk_list'] = cluster_id2normalized_bldg_layout_blk_list
+            new_data['cluster_id2normalized_bldg_layout_cluster_list'] = cluster_id2normalized_bldg_layout_cluster_list
+            new_data['cluster_id2normalized_bldg_layout_bldg_bbox_list'] = cluster_id2normalized_bldg_layout_bldg_bbox_list
+
+            # new_data['cluster_id2cluster_mask'] = cluster_id2cluster_mask
+            new_data['blk_image_mask'] = blk_image_mask
 
             if debug:
                 fig, axs = plt.subplots(2, 2, figsize=(14, 7))
@@ -637,11 +725,12 @@ def process_folder(folder):
         except:
             error_count += 1
             continue
-    with open(output_path, 'wb') as f:
-        pickle.dump(new_data_list, f)
 
-        print(f"{folder}, error: {error_count}")
-        print(f"{folder} 처리 완료")
+        with open(output_path, 'wb') as f:
+            pickle.dump(new_data, f)
+
+    print(f"{folder}, error: {error_count}")
+    print(f"{folder} 처리 완료")
            
 def main():
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:

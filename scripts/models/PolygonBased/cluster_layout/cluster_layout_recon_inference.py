@@ -9,15 +9,34 @@ from accelerate.utils import set_seed
 from tqdm.auto import tqdm
 
 from dataloader import ClusterLayoutDataset
-from transformer import Transformer
+from transformer import ContinuousTransformer, DiscreteTransformer
+
+def custom_collate_fn(batch):
+    # 배치에서 각 데이터를 분리합니다.
+    bldg_layout_list = [item[0] for item in batch]  # 건물 레이아웃 데이터
+    min_coords_list = [item[1] for item in batch]   # 최소 좌표
+    range_max_list = [item[2] for item in batch]    # 최대 범위
+
+    # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
+    # 건물 레이아웃 데이터는 텐서로 변환
+    bldg_layout_tensor = torch.stack(bldg_layout_list)
+
+    # min_coords_list와 range_max_list는 각 배치 내의 배열이 같은 길이를 가지지 않을 수 있으므로 패딩을 추가
+    min_coords_tensor = torch.tensor(min_coords_list, dtype=torch.float32)
+    range_max_tensor = torch.tensor(range_max_list, dtype=torch.float32)
+
+    return bldg_layout_tensor, min_coords_tensor, range_max_tensor
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
+    parser.add_argument('--user_name', type=str, default="ssw03270", required=False, help='User name.')
     parser.add_argument('--checkpoint_path', type=str, default='./vq_model_checkpoints/d_256_cb_512_st_9/best_model.pt', help='Path to the model checkpoint.')
     parser.add_argument('--output_dir', type=str, default='inference_outputs', help='Directory to save inference results.')
     parser.add_argument('--test_batch_size', type=int, default=5012, required=False, help='Batch size for testing.')
+    parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
+    parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
     parser.add_argument('--device', type=str, default=None, help='Device to run inference on (e.g., "cuda" or "cpu"). If not set, uses Accelerator default.')
-    parser.add_argument('--num_workers', type=int, default=0, help='Number of workers for DataLoader.')
+    parser.add_argument("--coords_type", type=str, default="continuous", help="coordinate type")
     args = parser.parse_args()
 
     model_name = args.checkpoint_path.split('/')[2]
@@ -31,29 +50,22 @@ def main():
     os.makedirs(args.output_dir + '/' + model_name, exist_ok=True)
 
     # Load test dataset
-    test_dataset = ClusterLayoutDataset(data_type="test")
-    test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers)
+    test_dataset = ClusterLayoutDataset(data_type="test", user_name=args.user_name, coords_type=args.coords_type)
+    test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
-    # Initialize the model architecture (ensure it matches the training setup)
-    d_model = 256
-    d_inner = d_model * 4
+    # 모델 초기화
+    d_inner = args.d_model * 4
     n_layer = 4
     n_head = 8
     dropout = 0.1
-    codebook_size, commitment_cost = 512, 0.25
-    n_tokens = 60
-    sample_tokens = 4
-    model = Transformer(
-        d_model=d_model,
-        d_inner=d_inner,
-        n_layer=n_layer,
-        n_head=n_head,
-        dropout=dropout,
-        codebook_size=codebook_size,
-        commitment_cost=commitment_cost,
-        n_tokens=n_tokens,
-        sample_tokens=sample_tokens
-    )
+    commitment_cost = 0.25
+    n_tokens = 10
+    if args.coords_type == "continuous":
+        model = ContinuousTransformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
+                                      codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
+    elif args.coords_type == "discrete":
+        model = DiscreteTransformer(d_model=args.d_model, d_inner=d_inner, n_layer=n_layer, n_head=n_head, dropout=dropout, 
+                                    codebook_size=args.codebook_size, commitment_cost=commitment_cost, n_tokens=n_tokens)
 
     # Load the checkpoint
     checkpoint = torch.load(args.checkpoint_path, map_location=device)
@@ -79,19 +91,18 @@ def main():
             range_max = batch[2]
 
             # 모델 Forward
-            coords_output, vq_loss, perplexity = model(data)
-            coords_output = torch.argmax(coords_output, dim=-1).view(-1, 10, 6)
+            bbox_output, recon_loss, vq_loss, perplexity = model(data)
 
-            coords_output = coords_output.float()
-            data = data.float()
+            if args.coords_type == 'discrete':
+                bbox_output = torch.argmax(bbox_output, dim=-1).view(-1, 10, 6)
 
-            coords_output[:, :, :5] = coords_output[:, :, :5] / 63
-            data[:, :, :5] = data[:, :, :5] / 63
+                bbox_output = bbox_output.float()
+                data = data.float()
 
+                bbox_output[:, :, :5] = bbox_output[:, :, :5] / 63
+                data[:, :, :5] = data[:, :, :5] / 63
 
-            # Post-process outputs if necessary
-            # For example, convert logits to predicted tokens
-            all_coords_outputs.append(coords_output.cpu().numpy())
+            all_coords_outputs.append(bbox_output.cpu().numpy())
             gt_coords_outputs.append(data.cpu().numpy())
             min_coords_outputs.append(min_coords.cpu().numpy())
             range_max_outputs.append(range_max.cpu().numpy())
