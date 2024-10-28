@@ -125,13 +125,13 @@ class ClusterLayoutDataset(Dataset):
         range_max_list = np.array(range_max_list)
 
         if self.coords_type == 'continuous':
-            return torch.tensor(bldg_layout_list, dtype=torch.float32), min_coords_list, range_max_list
+            return torch.tensor(bldg_layout_list, dtype=torch.float32), torch.tensor(min_coords_list, dtype=torch.float32), torch.tensor(range_max_list, dtype=torch.float32)
         
         elif self.coords_type == 'discrete':
             bldg_layout_list[:, :5] = np.floor(bldg_layout_list[:, :5] * 63).astype(int)
             bldg_layout_list[:, :5] = np.clip(bldg_layout_list[:, :5], 0, 63)
 
-            return torch.tensor(bldg_layout_list, dtype=torch.long), min_coords_list, range_max_list
+            return torch.tensor(bldg_layout_list, dtype=torch.long), torch.tensor(min_coords_list, dtype=torch.float32), torch.tensor(range_max_list, dtype=torch.float32)
 
     def __len__(self):
         """
