@@ -146,8 +146,8 @@ class DiscreteTransformer(nn.Module):
 
         self.embed = nn.Embedding(self.bin, d_model)
 
-        self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
-        self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, n_tokens)
+        self.encoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, self.n_tokens)
+        self.decoder = TransformerEncoder(n_layer, n_head, d_model, d_inner, dropout, self.n_tokens)
 
         self.vq = VectorQuantizer(codebook_size, d_model, commitment_cost)
 
