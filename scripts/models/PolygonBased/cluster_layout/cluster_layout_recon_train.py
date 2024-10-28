@@ -22,7 +22,7 @@ def custom_collate_fn(batch):
 
     # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
     # 건물 레이아웃 데이터는 텐서로 변환
-    bldg_layout_tensor = torch.stack(bldg_layout_list)
+    bldg_layout_tensor = torch.stack(bldg_layout_list, dim=0)
 
     # min_coords_list와 range_max_list는 각 배치 내의 배열이 같은 길이를 가지지 않을 수 있으므로 패딩을 추가
     min_coords_tensor = torch.tensor(min_coords_list, dtype=torch.float32)
