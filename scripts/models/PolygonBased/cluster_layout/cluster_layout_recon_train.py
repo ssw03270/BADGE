@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     parser.add_argument("--coords_type", type=str, default="continuous", help="coordinate type")
+    parser.add_argument("--norm_type", type=str, default="bldg_bbox", help="coordinate type")
     parser.add_argument("--model_name", type=str, default="none", help="coordinate type")
     args = parser.parse_args()
 
@@ -52,7 +53,7 @@ def main():
     set_seed(42)
 
     if args.model_name == "none":
-        args.model_name = f"run_d_{args.d_model}_cb_{args.codebook_size}_type_{args.coords_type}"
+        args.model_name = f"d_{args.d_model}_cb_{args.codebook_size}_coords_{args.coords_type}_norm_{args.norm_type}"
 
     if accelerator.is_main_process:
         wandb.login(key='0f272b4978c0b450c3765b24b8abd024d7799e80')
@@ -64,10 +65,10 @@ def main():
         )
 
     # 데이터셋 로드
-    train_dataset = ClusterLayoutDataset(data_type="train", user_name=args.user_name, coords_type=args.coords_type)
+    train_dataset = ClusterLayoutDataset(data_type="train", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
     train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=custom_collate_fn)
     
-    val_dataset = ClusterLayoutDataset(data_type="val", user_name=args.user_name, coords_type=args.coords_type)
+    val_dataset = ClusterLayoutDataset(data_type="val", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
     val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
     # 모델 초기화

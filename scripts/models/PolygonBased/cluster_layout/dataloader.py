@@ -31,7 +31,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
 class ClusterLayoutDataset(Dataset):
-    def __init__(self, data_type='train', user_name='ssw03270', coords_type='continuous'):
+    def __init__(self, data_type='train', user_name='ssw03270', coords_type='continuous', norm_type="bldg_bbox"):
         """
         Initializes an instance of the ClusterLayoutDataset class.
 
@@ -43,6 +43,7 @@ class ClusterLayoutDataset(Dataset):
 
         self.data_type = data_type
         self.coords_type = coords_type
+        self.norm_type = norm_type
 
         if data_type == 'test':
             self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
@@ -83,10 +84,17 @@ class ClusterLayoutDataset(Dataset):
         """
         with open(self.pkl_files[idx], 'rb') as f:
             data = pickle.load(f)
+        
+        if self.norm_type == "bldg_bbox":
+            regions = data['cluster_id2cluster_bldg_bbox']
+            layouts = data['cluster_id2normalized_bldg_layout_bldg_bbox_list']
+        elif self.norm_type == "cluster":
+            regions = data['cluster_id2cluster_bbox']
+            layouts = data['cluster_id2normalized_bldg_layout_cluster_list']
+        elif self.norm_type == "blk":
+            regions = None
+            layouts = data['cluster_id2normalized_bldg_layout_blk_list']
 
-        regions = data['cluster_id2cluster_bldg_bbox']
-        layouts = data['cluster_id2normalized_bldg_layout_bldg_bbox_list']
-            
         MAX_BUILDINGS = 10
         PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
 
@@ -95,8 +103,11 @@ class ClusterLayoutDataset(Dataset):
         range_max_list = []
 
         for cluster_id, bldg_layouts in layouts.items():
-            cluster_region = regions[cluster_id]
-            _, min_coords, range_max, _ = normalize_coords_uniform(cluster_region.exterior.coords)
+            if regions is not None:
+                cluster_region = regions[cluster_id]
+                _, min_coords, range_max, _ = normalize_coords_uniform(cluster_region.exterior.coords)
+                min_coords_list.append(min_coords)
+                range_max_list.append([range_max])
 
             bldg_layouts = np.array(bldg_layouts)
             current_building_count = bldg_layouts.shape[0]
@@ -108,8 +119,6 @@ class ClusterLayoutDataset(Dataset):
                 bldg_layouts = bldg_layouts[:MAX_BUILDINGS]
 
             bldg_layout_list.append(bldg_layouts)
-            min_coords_list.append(min_coords)
-            range_max_list.append([range_max])
 
         bldg_layout_list = np.array(bldg_layout_list)
         min_coords_list = np.array(min_coords_list)
