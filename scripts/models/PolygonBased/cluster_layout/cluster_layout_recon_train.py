@@ -44,18 +44,22 @@ def main():
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
     parser.add_argument("--coords_type", type=str, default="continuous", help="coordinate type")
+    parser.add_argument("--model_name", type=str, default="none", help="coordinate type")
     args = parser.parse_args()
 
     accelerator = Accelerator()  # 여기서 설정
     device = accelerator.device
     set_seed(42)
 
+    if args.model_name == "none":
+        args.model_name = f"run_d_{args.d_model}_cb_{args.codebook_size}_type_{args.coords_type}"
+
     if accelerator.is_main_process:
         wandb.login(key='0f272b4978c0b450c3765b24b8abd024d7799e80')
         wandb.init(
             project="codebook_train",  # Replace with your WandB project name
             config=vars(args),            # Logs all hyperparameters
-            name=f"run_d_{args.d_model}_cb_{args.codebook_size}_type_{args.coords_type}",  # Optional: Name your run
+            name=args.model_name,  # Optional: Name your run
             save_code=True                # Optional: Save your code with the run
         )
 
@@ -137,7 +141,7 @@ def main():
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
-            save_dir = f"vq_model_checkpoints/d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}/checkpoint_epoch_{epoch+1}"
+            save_dir = f"vq_model_checkpoints/{args.model_name}/checkpoint_epoch_{epoch+1}"
             os.makedirs(save_dir, exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
@@ -146,7 +150,7 @@ def main():
         if accelerator.is_main_process and val_loss < best_val_loss:
             best_val_loss = val_loss / len(val_dataloader)
             best_epoch = epoch + 1
-            best_model_dir = f"vq_model_checkpoints/d_{args.d_model}_cb_{args.codebook_size}_st_{args.sample_tokens}/best_model.pt"
+            best_model_dir = f"vq_model_checkpoints/{args.model_name}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)
