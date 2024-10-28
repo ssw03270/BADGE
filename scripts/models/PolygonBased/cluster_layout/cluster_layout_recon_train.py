@@ -15,6 +15,13 @@ from transformer import ContinuousTransformer, DiscreteTransformer
 
 
 def custom_collate_fn(batch):
+    batch = [item for item in batch if item is not None]
+    
+    if len(batch) == 0:
+        # 모든 항목이 무효한 경우, 빈 배치를 반환하거나 예외를 발생시킬 수 있습니다.
+        # 여기서는 빈 텐서를 반환합니다.
+        return None, None, None
+
     # 배치에서 각 데이터를 분리합니다.
     bldg_layout_list = [item[0] for item in batch]  # 건물 레이아웃 데이터
     min_coords_list = [item[1] for item in batch]   # 최소 좌표

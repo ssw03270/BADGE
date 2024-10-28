@@ -82,8 +82,16 @@ class ClusterLayoutDataset(Dataset):
         Returns:
         - dict: A dictionary containing the padded matrices and padding masks for boundary adjacency matrix, building adjacency matrix, and boundary-building adjacency matrix, as well as the boundary positions and the number of boundaries and buildings. For test data, it also returns the filename of the loaded pickle file.
         """
-        with open(self.pkl_files[idx], 'rb') as f:
-            data = pickle.load(f)
+        file_path = self.pkl_files[idx]
+        try:
+            with open(file_path, 'rb') as f:
+                data = pickle.load(f)
+        except EOFError:
+            print(f"EOFError: Failed to load {file_path}. The file may be corrupted or incomplete.")
+            return None  # 무효한 항목을 나타내는 None 반환
+        except Exception as e:
+            print(f"Error loading {file_path}: {e}")
+            return None  # 무효한 항목을 나타내는 None 반환
         
         if self.norm_type == "bldg_bbox":
             regions = data['cluster_id2cluster_bldg_bbox']
