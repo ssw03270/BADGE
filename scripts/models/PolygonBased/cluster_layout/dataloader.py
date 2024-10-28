@@ -67,13 +67,31 @@ class ClusterLayoutDataset(Dataset):
         self.data_length = len(self.pkl_files)
         print(f"총 {self.data_length}개의 데이터를 로드합니다.")
 
-        # 모든 데이터를 메모리에 적재
+        # 필요한 키만 메모리에 적재
         self.data_list = []
         for file_path in tqdm(self.pkl_files, desc="데이터를 메모리에 적재 중"):
             try:
                 with open(file_path, 'rb') as f:
                     data = pickle.load(f)
-                    self.data_list.append(data)
+                    # 필요한 키만 추출
+                    if self.norm_type == "bldg_bbox":
+                        regions = data['cluster_id2cluster_bldg_bbox']
+                        layouts = data['cluster_id2normalized_bldg_layout_bldg_bbox_list']
+                    elif self.norm_type == "cluster":
+                        regions = data['cluster_id2cluster_bbox']
+                        layouts = data['cluster_id2normalized_bldg_layout_cluster_list']
+                    elif self.norm_type == "blk":
+                        regions = None
+                        layouts = data['cluster_id2normalized_bldg_layout_blk_list']
+                    else:
+                        regions = None
+                        layouts = None
+
+                    # 필요한 데이터만 저장
+                    self.data_list.append({
+                        'regions': regions,
+                        'layouts': layouts
+                    })
             except EOFError:
                 print(f"EOFError: {file_path} 로드에 실패했습니다. 파일이 손상되었거나 불완전할 수 있습니다.")
                 continue  # 해당 파일 건너뜀
@@ -91,17 +109,9 @@ class ClusterLayoutDataset(Dataset):
         반환값:
         - 데이터 텐서 및 관련 정보.
         """
-        data = self.data_list[idx]
-
-        if self.norm_type == "bldg_bbox":
-            regions = data['cluster_id2cluster_bldg_bbox']
-            layouts = data['cluster_id2normalized_bldg_layout_bldg_bbox_list']
-        elif self.norm_type == "cluster":
-            regions = data['cluster_id2cluster_bbox']
-            layouts = data['cluster_id2normalized_bldg_layout_cluster_list']
-        elif self.norm_type == "blk":
-            regions = None
-            layouts = data['cluster_id2normalized_bldg_layout_blk_list']
+        data_item = self.data_list[idx]
+        regions = data_item['regions']
+        layouts = data_item['layouts']
 
         MAX_BUILDINGS = 10
         PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
@@ -136,7 +146,7 @@ class ClusterLayoutDataset(Dataset):
             return (torch.tensor(bldg_layout_list, dtype=torch.float32),
                     torch.tensor(min_coords_list, dtype=torch.float32),
                     torch.tensor(range_max_list, dtype=torch.float32))
-        
+
         elif self.coords_type == 'discrete':
             bldg_layout_list[:, :5] = np.floor(bldg_layout_list[:, :5] * 63).astype(int)
             bldg_layout_list[:, :5] = np.clip(bldg_layout_list[:, :5], 0, 63)
