@@ -99,7 +99,7 @@ def main():
 
     best_val_loss = float('inf')
     best_epoch = 0
-    loss = 0
+    
     # 학습 루프
     for epoch in range(args.num_epochs):
         model.train()
@@ -119,7 +119,7 @@ def main():
             recon_loss = F.mse_loss(layout_output, layout)
             diffusion_loss = F.mse_loss(e, eps_theta)
 
-            loss += recon_loss + diffusion_loss
+            loss = recon_loss + diffusion_loss
 
             # 역전파 및 최적화
             accelerator.backward(loss)
