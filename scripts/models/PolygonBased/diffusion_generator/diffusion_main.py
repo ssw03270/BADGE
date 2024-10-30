@@ -14,11 +14,26 @@ from dataloader import BlkLayoutDataset
 from diffusion import Diffusion
 
 def custom_collate(batch):
-    # Filter out None values
-    batch = list(filter(lambda x: x is not None, batch))
-    if not batch:
-        return None  # Or handle as needed
-    return torch.utils.data.dataloader.default_collate(batch)
+    batch = [item for item in batch if item is not None]
+    
+    if len(batch) == 0:
+        # 모든 항목이 무효한 경우, 빈 배치를 반환하거나 예외를 발생시킬 수 있습니다.
+        # 여기서는 빈 텐서를 반환합니다.
+        return None, None, None
+
+    # 배치에서 각 데이터를 분리합니다.
+    bldg_layout_list = [item[0] for item in batch]  # 건물 레이아웃 데이터
+    image_mask_list = [item[1] for item in batch]   # 최소 좌표
+    pad_mask_list = [item[2] for item in batch]    # 최대 범위
+    region_polygons = [item[3] for item in batch]
+
+    # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
+    # 건물 레이아웃 데이터는 텐서로 변환
+    bldg_layout_tensor = torch.stack(bldg_layout_list)
+    image_mask_tensor = torch.stack(image_mask_list)
+    pad_mask_tensor = torch.stack(pad_mask_list)
+
+    return bldg_layout_tensor, image_mask_tensor, pad_mask_tensor, region_polygons
 
 # 학습 코드
 def main():
