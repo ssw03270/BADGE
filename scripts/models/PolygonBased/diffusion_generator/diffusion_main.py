@@ -99,7 +99,7 @@ def main():
 
     best_val_loss = float('inf')
     best_epoch = 0
-
+    loss = 0
     # 학습 루프
     for epoch in range(args.num_epochs):
         model.train()
