@@ -72,7 +72,8 @@ class BlkLayoutDataset(Dataset):
             self.pkl_files = self.pkl_files[train_split:train_split + val_split]
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
-
+        self.pkl_files = self.pkl_files[:1000]
+        
         self.data_length = len(self.pkl_files)
         print(f"총 {self.data_length}개의 데이터를 로드합니다.")
 
@@ -102,6 +103,9 @@ class BlkLayoutDataset(Dataset):
         image_mask = image_mask.convert("RGB")
         image_mask = self.preprocess(image_mask)
 
+        region_polygons = data['region_id2region_polygon']
+        region_poly = [region_poly.exterior.coords.xy for region_poly in list(region_polygons.values())]
+
         layouts = data['cluster_id2normalized_bldg_layout_blk_list']
 
         MAX_BUILDINGS = 300
@@ -127,7 +131,8 @@ class BlkLayoutDataset(Dataset):
 
         return (torch.tensor(bldg_layout_list, dtype=torch.float32),
                 image_mask,
-                torch.tensor(padding_mask, dtype=torch.float32))
+                torch.tensor(padding_mask, dtype=torch.float32),
+                region_poly)
 
     def __len__(self):
         """

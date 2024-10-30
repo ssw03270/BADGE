@@ -181,10 +181,26 @@ class Diffusion(nn.Module):
 
        return t.to(self.device)
 
-    def forward(self, layout, image_mask, t):
+    def forward(self, layout, image_mask, t, reparam=True):
         e = torch.randn_like(layout).to(layout.device)
         l_t_noise = q_sample(layout, self.alphas_bar_sqrt,
                              self.one_minus_alphas_bar_sqrt, t, noise=e)
-        output = self.network(l_t_noise, image_mask, timestep=t)
+        eps_theta = self.network(l_t_noise, image_mask, timestep=t)
 
-        return output
+        if reparam:
+            sqrt_one_minus_alpha_bar_t = extract(self.one_minus_alphas_bar_sqrt, t, l_t_noise)
+            sqrt_alpha_bar_t = (1 - sqrt_one_minus_alpha_bar_t.square()).sqrt()
+            l_0_generate_reparam = 1 / sqrt_alpha_bar_t * (l_t_noise - eps_theta * sqrt_one_minus_alpha_bar_t).to(self.device)
+
+            return eps_theta, e, l_0_generate_reparam
+        else:
+            return eps_theta, e, None
+
+
+    def conditional_reverse_ddim(self, real_layout, image_mask, cond='c', ratio=0.2, stochastic=True):
+        layout_t_0, intermediates = \
+            ddim_cond_sample_loop(self.network, real_layout, image_mask, self.ddim_timesteps, self.ddim_alphas,
+                                  self.ddim_alphas_prev, self.ddim_sigmas, stochastic=stochastic, cond=cond,
+                                  ratio=ratio)
+
+        return layout_t_0

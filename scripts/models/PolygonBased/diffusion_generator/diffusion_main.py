@@ -99,9 +99,12 @@ def main():
 
             # # 모델 Forward
             t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
-            layout_output = model(layout, image_mask, t)
+            eps_theta, e, layout_output = model(layout, image_mask, t)
 
-            loss = F.mse_loss(layout_output, layout)
+            recon_loss = F.mse_loss(layout_output, layout)
+            diffusion_loss = F.mse_loss(e, eps_theta)
+
+            loss += recon_loss + diffusion_loss
 
             # 역전파 및 최적화
             accelerator.backward(loss)
@@ -113,6 +116,8 @@ def main():
         # 검증 단계 (옵션)
         model.eval()
         val_loss = 0
+        val_recon_loss = 0
+        val_diffusion_loss = 0
         with torch.no_grad():
             for batch in val_dataloader:
                 layout = batch[0].to(device)
@@ -121,15 +126,19 @@ def main():
 
                 # # 모델 Forward
                 t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
-                layout_output = model(layout, image_mask, t)
+                eps_theta, e, layout_output = model(layout, image_mask, t)
 
-                loss = F.mse_loss(layout_output, layout)
+                recon_loss = F.mse_loss(layout_output, layout)
+                diffusion_loss = F.mse_loss(e, eps_theta)
 
+                loss += recon_loss + diffusion_loss
                 val_loss += loss.item()
+                val_recon_loss += recon_loss
+                val_diffusion_loss += diffusion_loss
 
         # 모델 저장
         if accelerator.is_main_process and (epoch + 1) % args.save_epoch == 0:
-            save_dir = f"vq_model_checkpoints/{args.model_name}/checkpoint_epoch_{epoch+1}"
+            save_dir = f"diffusion_checkpoints/{args.model_name}/checkpoint_epoch_{epoch+1}"
             os.makedirs(save_dir, exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), os.path.join(save_dir, "model.pt"))
@@ -138,7 +147,7 @@ def main():
         if accelerator.is_main_process and val_loss / len(val_dataloader) < best_val_loss:
             best_val_loss = val_loss / len(val_dataloader)
             best_epoch = epoch + 1
-            best_model_dir = f"vq_model_checkpoints/{args.model_name}/best_model.pt"
+            best_model_dir = f"diffusion_checkpoints/{args.model_name}/best_model.pt"
             os.makedirs(os.path.dirname(best_model_dir), exist_ok=True)
             unwrapped_model = accelerator.unwrap_model(model)
             torch.save(unwrapped_model.state_dict(), best_model_dir)
@@ -146,14 +155,20 @@ def main():
         if accelerator.is_main_process:
             avg_train_loss = total_loss / len(train_dataloader)
             avg_val_loss = val_loss / len(val_dataloader)
+            avg_val_recon_loss = val_recon_loss / len(val_dataloader)
+            avg_val_diffusion_loss = val_diffusion_loss / len(val_dataloader)
 
             wandb.log({
                 "train_loss": avg_train_loss,
                 "validation_loss": avg_val_loss,
+                "validation_recon_loss": avg_val_recon_loss,
+                "validation_diffusion_loss": avg_val_diffusion_loss,
                 "best_epoch": best_epoch
             })
 
             print(f"Validation Loss: {avg_val_loss}")
+            print(f"Validation Recon Loss: {avg_val_recon_loss}")
+            print(f"Validation Diffusion Loss: {avg_val_diffusion_loss}")
             print(f"Best Validation Loss: {best_val_loss}, Best Epoch: {best_epoch}")
 
 if __name__ == "__main__":
