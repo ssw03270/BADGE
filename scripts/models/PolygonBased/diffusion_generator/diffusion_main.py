@@ -36,7 +36,7 @@ def main():
     set_seed(42)
 
     if args.model_name == "none":
-        args.model_name = f"d_{args.d_model}_cb_{args.codebook_size}_coords_{args.coords_type}_norm_{args.norm_type}"
+        args.model_name = f"d_{args.d_model}_coords_{args.coords_type}_norm_{args.norm_type}"
 
     if accelerator.is_main_process:
         wandb.login(key='0f272b4978c0b450c3765b24b8abd024d7799e80')
