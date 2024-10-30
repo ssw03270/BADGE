@@ -73,41 +73,6 @@ class BlkLayoutDataset(Dataset):
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
 
-        # 필요한 키만 메모리에 적재
-        self.data_list = []
-        for file_path in tqdm(self.pkl_files, desc="데이터를 메모리에 적재 중"):
-            try:
-                with open(file_path, 'rb') as f:
-                    data = pickle.load(f)
-                    # 필요한 키만 추출
-                    if self.norm_type == "bldg_bbox":
-                        regions = data['cluster_id2cluster_bldg_bbox']
-                        layouts = data['cluster_id2normalized_bldg_layout_bldg_bbox_list']
-                    elif self.norm_type == "cluster":
-                        regions = data['cluster_id2cluster_bbox']
-                        layouts = data['cluster_id2normalized_bldg_layout_cluster_list']
-                    elif self.norm_type == "blk":
-                        regions = None
-                        layouts = data['cluster_id2normalized_bldg_layout_blk_list']
-                    else:
-                        regions = None
-                        layouts = None
-                    
-                    blk_image_mask = data['blk_image_mask']
-
-                    # 필요한 데이터만 저장
-                    self.data_list.append({
-                        'regions': regions,
-                        'layouts': layouts,
-                        'blk_image_mask': blk_image_mask
-                    })
-            except EOFError:
-                print(f"EOFError: {file_path} 로드에 실패했습니다. 파일이 손상되었거나 불완전할 수 있습니다.")
-                continue  # 해당 파일 건너뜀
-            except Exception as e:
-                print(f"{file_path} 로드 중 오류 발생: {e}")
-                continue  # 해당 파일 건너뜀
-
         self.data_length = len(self.pkl_files)
         print(f"총 {self.data_length}개의 데이터를 로드합니다.")
 
