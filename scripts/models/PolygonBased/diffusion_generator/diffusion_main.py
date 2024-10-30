@@ -49,10 +49,10 @@ def main():
         )
 
     # 데이터셋 로드
-    train_dataset = BlkLayoutDataset(data_type="test", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
+    train_dataset = BlkLayoutDataset(data_type="train", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
     train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=4, shuffle=True)
     
-    val_dataset = BlkLayoutDataset(data_type="test", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
+    val_dataset = BlkLayoutDataset(data_type="val", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
     val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, num_workers=4, shuffle=False)
 
     # 모델 초기화
