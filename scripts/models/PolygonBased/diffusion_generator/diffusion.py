@@ -67,6 +67,7 @@ class TransformerDecoder(nn.Module):
 
         super(TransformerDecoder, self).__init__()
 
+        self.n_layer = n_layer
 
         self.resnet18 = models.resnet18(pretrained=True)
         modules = list(self.resnet18.children())[:-1]  # Remove the last FC layer
@@ -105,11 +106,13 @@ class TransformerDecoder(nn.Module):
 
         condition = self.resnet18(condition).squeeze().unsqueeze(1)
 
-        for dec_layer in self.layer_stack:
+        for idx, dec_layer in enumerate(self.layer_stack):
             dec_output = dec_layer(dec_output, condition, timestep)
 
+            if idx < self.n_layer - 1:
+                dec_output = F.softplus(dec_output)
+
         dec_output = self.decoding(dec_output)
-        dec_output = F.sigmoid(dec_output)
 
         return dec_output
 
