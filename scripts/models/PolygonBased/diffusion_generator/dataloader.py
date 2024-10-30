@@ -92,10 +92,10 @@ class BlkLayoutDataset(Dataset):
             with open(file_path, 'rb') as f:
                 data = pickle.load(f)
         except EOFError:
-            print(f"EOFError: {file_path} 로드에 실패했습니다. 파일이 손상되었거나 불완전할 수 있습니다.")
+            # print(f"EOFError: {file_path} 로드에 실패했습니다. 파일이 손상되었거나 불완전할 수 있습니다.")
             return None  # 해당 파일 건너뜀
         except Exception as e:
-            print(f"{file_path} 로드 중 오류 발생: {e}")
+            # print(f"{file_path} 로드 중 오류 발생: {e}")
             return None  # 해당 파일 건너뜀
         
         image_mask = data['blk_image_mask']
