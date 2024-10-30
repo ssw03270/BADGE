@@ -91,7 +91,7 @@ def main():
             pad_mask = batch[2].to(device)
 
             # # 모델 Forward
-            t = model.sample_t([layout.shape[0]], t_max=args.sample_t_max)
+            t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
             layout_output = model(layout, image_mask, t)
 
             loss = F.mse_loss(layout_output, layout)
@@ -113,7 +113,7 @@ def main():
                 pad_mask = batch[2].to(device)
 
                 # # 모델 Forward
-                t = model.sample_t([layout.shape[0]], t_max=args.sample_t_max)
+                t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
                 layout_output = model(layout, image_mask, t)
 
                 loss = F.mse_loss(layout_output, layout)
