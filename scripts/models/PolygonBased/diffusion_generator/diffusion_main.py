@@ -13,6 +13,13 @@ from tqdm.auto import tqdm
 from dataloader import BlkLayoutDataset
 from diffusion import Diffusion
 
+def custom_collate(batch):
+    # Filter out None values
+    batch = list(filter(lambda x: x is not None, batch))
+    if not batch:
+        return None  # Or handle as needed
+    return torch.utils.data.dataloader.default_collate(batch)
+
 # 학습 코드
 def main():
     parser = argparse.ArgumentParser(description='Train the Transformer model.')
@@ -49,10 +56,10 @@ def main():
 
     # 데이터셋 로드
     train_dataset = BlkLayoutDataset(data_type="train", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
-    train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=4, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=4, shuffle=True, collate_fn=custom_collate)
     
     val_dataset = BlkLayoutDataset(data_type="val", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
-    val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, num_workers=4, shuffle=False)
+    val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, num_workers=4, shuffle=False, collate_fn=custom_collate)
 
     # 모델 초기화
     d_inner = args.d_model * 4
