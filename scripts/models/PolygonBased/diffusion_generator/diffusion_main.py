@@ -146,7 +146,7 @@ def main():
                 recon_loss = F.mse_loss(layout_output, layout)
                 diffusion_loss = F.mse_loss(e, eps_theta)
 
-                loss += recon_loss + diffusion_loss
+                loss = recon_loss + diffusion_loss
                 val_loss += loss.item()
                 val_recon_loss += recon_loss
                 val_diffusion_loss += diffusion_loss
