@@ -72,8 +72,8 @@ class BlkLayoutDataset(Dataset):
             self.pkl_files = self.pkl_files[train_split:train_split + val_split]
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
-        self.pkl_files = self.pkl_files[:1000]
-        
+        self.pkl_files = self.pkl_files
+
         self.data_length = len(self.pkl_files)
         print(f"총 {self.data_length}개의 데이터를 로드합니다.")
 
