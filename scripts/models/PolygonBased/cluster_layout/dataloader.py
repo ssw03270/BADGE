@@ -42,7 +42,7 @@ class ClusterLayoutDataset(Dataset):
         self.norm_type = norm_type
 
         if data_type == 'test':
-            self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
+            self.folder_path = f'E:/Resources/Our_dataset_divided_without_segmentation_mask'
         else:
             # self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
             self.folder_path = f'/data2/local_datasets/CITY2024/Our_dataset_divided_without_segmentation_mask'
@@ -66,7 +66,7 @@ class ClusterLayoutDataset(Dataset):
 
         # 필요한 키만 메모리에 적재
         self.data_list = []
-        for file_path in tqdm(self.pkl_files, desc="데이터를 메모리에 적재 중"):
+        for file_path in tqdm(self.pkl_files[:1000], desc="데이터를 메모리에 적재 중"):
             try:
                 with open(file_path, 'rb') as f:
                     data = pickle.load(f)

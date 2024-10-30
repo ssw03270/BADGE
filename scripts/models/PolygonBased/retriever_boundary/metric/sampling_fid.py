@@ -8,7 +8,7 @@ from pytorch_fid.fid_score import calculate_fid_given_paths
 import torch
 from tqdm import tqdm
 
-def separate_images(source_dir, predict_suffix='_predict.png', gt_suffix='_gt.png'):
+def separate_images(gt_source_dir, predict_source_dir, predict_suffix='_predict.png', gt_suffix='_gt.png'):
     """
     주어진 디렉토리에서 예측 이미지와 실제 이미지를 분리하여 임시 디렉토리에 복사합니다.
     
@@ -28,17 +28,21 @@ def separate_images(source_dir, predict_suffix='_predict.png', gt_suffix='_gt.pn
     os.makedirs(gt_dir, exist_ok=True)
     
     # 파일 분류 및 복사
-    for filename in os.listdir(source_dir):
-        file_path = os.path.join(source_dir, filename)
+    for filename in os.listdir(gt_source_dir):
+        file_path = os.path.join(gt_source_dir, filename)
+        if os.path.isfile(file_path):
+            if filename.endswith(gt_suffix):
+                shutil.copy(file_path, gt_dir)
+
+    for filename in os.listdir(predict_source_dir):
+        file_path = os.path.join(predict_source_dir, filename)
         if os.path.isfile(file_path):
             if filename.endswith(predict_suffix):
                 shutil.copy(file_path, predict_dir)
-            elif filename.endswith(gt_suffix):
-                shutil.copy(file_path, gt_dir)
     
     return predict_dir, gt_dir, temp_dir
 
-def calculate_fid(source_dir, predict_suffix='_predict.png', gt_suffix='_gt.png', batch_size=50, device=None, dims=2048):
+def calculate_fid(gt_source_dir, predict_source_dir, predict_suffix='_predict.png', gt_suffix='_gt.png', batch_size=50, device=None, dims=2048):
     """
     FID 스코어를 계산합니다.
     
@@ -54,7 +58,7 @@ def calculate_fid(source_dir, predict_suffix='_predict.png', gt_suffix='_gt.png'
         float: 계산된 FID 스코어.
     """
     # 이미지 분리
-    predict_dir, gt_dir, temp_dir = separate_images(source_dir, predict_suffix, gt_suffix)
+    predict_dir, gt_dir, temp_dir = separate_images(gt_source_dir, predict_source_dir, predict_suffix, gt_suffix)
     
     try:
         # 장치 설정
@@ -74,7 +78,8 @@ def calculate_fid(source_dir, predict_suffix='_predict.png', gt_suffix='_gt.png'
 
 def main():
     parser = argparse.ArgumentParser(description='Calculate FID score between predict and ground truth images in the same directory.')
-    parser.add_argument('--source_dir', type=str, default='./visualizations/d_256_cb_512_coords_continuous_norm_blk', help='Path to the directory containing both predict and gt images.')
+    parser.add_argument('--gt_source_dir', type=str, default='./visualizations/d_256_cb_512_coords_continuous_norm_blk_generate_original', help='Path to the directory containing both predict and gt images.')
+    parser.add_argument('--predict_source_dir', type=str, default='./visualizations/d_256_cb_512_coords_continuous_norm_blk_generate_retrieval', help='Path to the directory containing both predict and gt images.')
     parser.add_argument('--predict_suffix', type=str, default='_predict.png', help='Suffix of predict images. Default: _predict.png')
     parser.add_argument('--gt_suffix', type=str, default='_gt.png', help='Suffix of ground truth images. Default: _gt.png')
     parser.add_argument('--batch_size', type=int, default=50, help='Batch size for FID calculation. Default: 50')
@@ -84,11 +89,12 @@ def main():
     
     args = parser.parse_args()
     
-    model_name = args.source_dir.split('/')[-1]
+    model_name = args.predict_source_dir.split('/')[-1]
     args.save_dir = args.save_dir + '/' + model_name
 
     # FID 계산
-    fid = calculate_fid(args.source_dir,
+    fid = calculate_fid(args.gt_source_dir,
+                        args.predict_source_dir,
                         predict_suffix=args.predict_suffix,
                         gt_suffix=args.gt_suffix,
                         batch_size=args.batch_size,

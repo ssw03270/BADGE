@@ -50,17 +50,26 @@ class VectorQuantizer(nn.Module):
         
         return quantized, loss, perplexity
 
-    def get_encoding_indices(self, inputs):
+    def sampling(self, inputs: Tensor, temperature: float = 0.7) -> Tensor:
+        """
+        주어진 입력과 유사한 주변 코드벡터를 유사도 기반 확률 분포에서 샘플링합니다.
+        temperature는 샘플링의 다양성을 조절합니다.
+        """
         # 입력을 (B, C, H, W)에서 (B*H*W, C)로 변환
-        input_shape = inputs.shape
-        # flat_input = inputs.view(-1, self.embedding_dim)
-        flat_input = inputs.view(-1, 1)
+        flat_input = inputs.view(-1, self.embedding_dim)
         
-        # 거리 계산
+        # 코드북과의 유사도 계산 (코사인 유사도 사용 가능)
         distances = (torch.sum(flat_input**2, dim=1, keepdim=True)
                      + torch.sum(self.embedding.weight**2, dim=1)
                      - 2 * torch.matmul(flat_input, self.embedding.weight.t()))
+        similarity = -distances  # 거리를 유사도로 변환
         
-        # 가장 가까운 인덱스 찾기
-        encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
-        return encoding_indices
+        # softmax를 통해 확률 분포 생성 (온도 파라미터 적용)
+        probabilities = F.softmax(similarity / temperature, dim=1)  # (N, num_embeddings)
+        
+        # 확률 분포를 기반으로 주변 인덱스 샘플링
+        sampled_indices = torch.multinomial(probabilities, 1)  # (N, 1)
+
+        # 샘플링된 인덱스에 해당하는 코드벡터 가져오기
+        quantized_nearby = self.embedding(sampled_indices).view(inputs.shape)
+        return quantized_nearby

@@ -3,198 +3,164 @@ from torch.utils.data import Dataset
 import numpy as np
 import os
 import pickle
-import random
+import glob
 from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from functools import partial
 
-def load_pickle_file_with_cache(subfolder, folder_path):
-    """
-    Loads and processes a single pickle file corresponding to a subfolder.
+from PIL import Image  # PIL 라이브러리 사용
+from torchvision import transforms
 
-    Parameters:
-    - subfolder (str): The name of the subfolder.
-    - folder_path (str): The base path where subfolders are located.
+def normalize_coords_uniform(coords, min_coords=None, range_max=None):
+    if min_coords is not None and range_max is not None:
+        normalized_coords = (coords - min_coords) / range_max
+    else:
+        coords = np.array(coords)
+        min_coords = coords.min(axis=0)
+        max_coords = coords.max(axis=0)
+        range_max = (max_coords - min_coords).max()
+        normalized_coords = (coords - min_coords) / range_max
 
-    Returns:
-    - list: A list of clusters extracted from the pickle file.
-    """
-    image_mask_file_path = os.path.join(folder_path, subfolder, f'train_generator/{subfolder}_graph_prep_list_with_clusters_detail.pkl')
-    if not os.path.exists(image_mask_file_path):
-        return {
-            "cluster_img_mask": [],
-            "cluster_encoding_indices": []
-        }
-    encoding_indices_file_path = os.path.join(folder_path, subfolder, f'codebook_indices/{subfolder}_graph_prep_list_with_clusters_detail.pkl')
-    if not os.path.exists(encoding_indices_file_path):
-        return {
-            "cluster_img_mask": [],
-            "cluster_encoding_indices": []
-        }
-    
-    try:
-        with open(image_mask_file_path, 'rb') as f:
-            data = pickle.load(f)
+    out_of_bounds = []
+    # 정규화된 좌표가 0과 1 사이에 있는지 확인
+    if not (np.all(normalized_coords >= -1) and np.all(normalized_coords <= 2)):
+        print("경고: 정규화된 좌표 중 일부가 0과 1 사이에 있지 않습니다.")
+        # 추가로, 어떤 좌표가 범위를 벗어났는지 출력할 수 있습니다.
+        out_of_bounds = normalized_coords[(normalized_coords < -1) | (normalized_coords > 2)]
+        print("범위를 벗어난 좌표 값:", out_of_bounds)
 
-        cluster_img_mask = [list(d['cluster_id2cluster_mask'].values()) for d in data if 'cluster_id2cluster_mask' in d]
-        cluster_img_mask = [boundary for boundary in cluster_img_mask]
+    return normalized_coords, min_coords, [range_max], out_of_bounds
 
-        with open(encoding_indices_file_path, 'rb') as f:
-            data = pickle.load(f)
-
-        cluster_encoding_indices = [list(d['cluster_id2encoding_indices'].values()) for d in data if 'cluster_id2encoding_indices' in d]
-        cluster_encoding_indices = [boundary for boundary in cluster_encoding_indices]
-
-        return {
-            "cluster_img_mask": cluster_img_mask,
-            "cluster_encoding_indices": cluster_encoding_indices
-        }
-    except Exception as e:
-        print(f"Error loading {image_mask_file_path} and {encoding_indices_file_path}: {e}")
-        return []
-
-
-class DiffusionGeneratorDataset(Dataset):
-    def __init__(self, data_type='train', user_name='ssw03270'):
+class BlkLayoutDataset(Dataset):
+    def __init__(self, data_type='train', user_name='ssw03270', coords_type='continuous', norm_type="bldg_bbox"):
         """
-        Initializes an instance of the DiffusionGeneratorDataset class.
+        BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
-        Parameters:
-        - data_type (str): Specifies the type of the data ('train', 'test', 'val'), which determines the folder from which data is loaded.
+        매개변수:
+        - data_type (str): 데이터의 종류를 지정합니다 ('train', 'test', 'val').
         """
 
-        super(DiffusionGeneratorDataset, self).__init__()
+        super(BlkLayoutDataset, self).__init__()
+
+        self.preprocess = transforms.Compose([
+            transforms.Resize((224, 224)),  # ResNet도 224x224 이미지를 입력으로 받음
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # ResNet의 표준 정규화 값
+        ])
 
         self.data_type = data_type
+        self.coords_type = coords_type
+        self.norm_type = norm_type
 
         if data_type == 'test':
-            self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
+            self.folder_path = f'E:/Resources/Our_dataset_divided_without_segmentation_mask'
         else:
-            self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
-            self.folder_path = f'Z:/iiixr-drive/Projects/2023_City_Team/000_2024CVPR/Our_dataset'
-        subfolders = [f for f in os.listdir(self.folder_path) if os.path.isdir(os.path.join(self.folder_path, f))]
+            # self.folder_path = f'/data/{user_name}/datasets/CITY2024/Our_dataset'
+            self.folder_path = f'/data2/local_datasets/CITY2024/Our_dataset_divided_without_segmentation_mask'
+        self.pkl_files = glob.glob(os.path.join(self.folder_path, '**', '*.pkl'), recursive=True)
+        self.pkl_files = np.array(self.pkl_files)
 
-        cluster_img_mask_datasets = []
-        cluster_encoding_indices_datasets = []
+        shuffled_indices = np.random.permutation(self.pkl_files.shape[0])
+        self.pkl_files = self.pkl_files[shuffled_indices]
 
-        # Create a partial function with fixed folder_path
-        load_func = partial(load_pickle_file_with_cache, folder_path=self.folder_path)
-
-        # Use ProcessPoolExecutor.map for ordered loading
-        with ProcessPoolExecutor(max_workers=4) as executor:
-            # Map returns results in the order of subfolders
-            results = list(tqdm(executor.map(load_func, subfolders), total=len(subfolders), desc="Loading pickle files with caching"))
-            for result in results:
-                cluster_img_mask = result['cluster_img_mask']
-                cluster_encoding_indices = result['cluster_encoding_indices']
-
-                cluster_img_mask_datasets += cluster_img_mask                   # batch, cluster_count, feature_count
-                cluster_encoding_indices_datasets += cluster_encoding_indices   # batch, cluster_count, image_size, image_size
-
-        MAX_CLUSTERS = 22 + 2
-        PADDING_MASK = np.zeros((len(cluster_img_mask_datasets[0][0]), len(cluster_img_mask_datasets[0][0][0]))).tolist()
-        PADDING_INDICES = [17] * len(cluster_encoding_indices_datasets[0][0])
-
-        indices_data_np = np.empty(len(cluster_encoding_indices_datasets), dtype=object)
-        for i, cluster_encoding_indices in enumerate(cluster_encoding_indices_datasets):
-            indices_data_np[i] = np.array(cluster_encoding_indices)
-        # 패딩 수행
-        padded_indices_data_np = []
-        for cluster_encoding_indices in tqdm(indices_data_np):
-            current_count = cluster_encoding_indices.shape[0]
-            if current_count < MAX_CLUSTERS:
-                padding_needed = MAX_CLUSTERS - current_count
-                # 패딩할 배열 생성
-                padding_array = np.array([PADDING_INDICES] * padding_needed)
-                # 패딩된 배열 결합
-                encoding_indices_padded = np.vstack((cluster_encoding_indices, padding_array))
-            else:
-                # 빌딩 개수가 이미 최대인 경우 필요시 자름
-                encoding_indices_padded = cluster_encoding_indices[:MAX_CLUSTERS]
-            padded_indices_data_np.append(encoding_indices_padded)
-
-        # 최종 배열로 변환 (모든 클러스터-바운더리가 동일한 크기를 가짐)
-        final_indices_padded_data = np.stack(padded_indices_data_np)
-        final_indices_padded_data = np.reshape(final_indices_padded_data, (final_indices_padded_data.shape[0], -1))
-
-        mask_data_np = np.empty(len(cluster_img_mask_datasets), dtype=object)
-        for i, cluster_img_mask in enumerate(cluster_img_mask_datasets):
-            mask_data_np[i] = np.array(cluster_img_mask)
-        # 패딩 수행
-        padded_mask_data_np = []
-        for cluster_mask in tqdm(mask_data_np):
-            current_count = cluster_mask.shape[0]
-            if current_count < MAX_CLUSTERS:
-                padding_needed = MAX_CLUSTERS - current_count
-                # 패딩할 배열 생성
-                padding_array = np.array([PADDING_MASK] * padding_needed)
-                # 패딩된 배열 결합
-                mask_padded = np.vstack((cluster_mask, padding_array))
-            else:
-                # 빌딩 개수가 이미 최대인 경우 필요시 자름
-                mask_padded = cluster_mask[:MAX_CLUSTERS]
-            
-            blk_mask = np.where(np.any(mask_padded == 1, axis=0), 1, 0)
-            blk_mask = blk_mask[np.newaxis, :, :]
-            mask_padded = np.concatenate((blk_mask, mask_padded), axis=0)[:MAX_CLUSTERS]
-
-            padded_mask_data_np.append(mask_padded)
-
-
-        # 최종 배열로 변환 (모든 클러스터-바운더리가 동일한 크기를 가짐)
-        final_mask_padded_data = np.stack(padded_mask_data_np)
-
-        # Shuffle the pkl files to ensure random split
-        shuffled_indices = np.random.permutation(final_indices_padded_data.shape[0])
-        final_indices_padded_data_shuffled = final_indices_padded_data[shuffled_indices]
-        final_mask_padded_data_shuffled = final_mask_padded_data[shuffled_indices]
-        self.indices_dataset = final_indices_padded_data_shuffled
-        self.masks_dataset = final_mask_padded_data_shuffled
-
-        # Compute the split sizes
-        total_files = len(self.indices_dataset)
+        # 데이터 분할
+        total_files = len(self.pkl_files)
         train_split = int(0.7 * total_files)
         val_split = int(0.2 * total_files)
 
-        # Split the dataset
         if data_type == 'train':
-            self.indices_dataset = self.indices_dataset[:train_split]
-            self.masks_dataset = self.masks_dataset[:train_split]
+            self.pkl_files = self.pkl_files[:train_split]
         elif data_type == 'val':
-            self.indices_dataset = self.indices_dataset[train_split:train_split + val_split]
-            self.masks_dataset = self.masks_dataset[train_split:train_split + val_split]
+            self.pkl_files = self.pkl_files[train_split:train_split + val_split]
         elif data_type == 'test':
-            self.indices_dataset = self.indices_dataset[train_split + val_split:]
-            self.masks_dataset = self.masks_dataset[train_split + val_split:]
+            self.pkl_files = self.pkl_files[train_split + val_split:]
 
-        self.data_length = len(self.indices_dataset)
-        print(self.data_length)
+        # 필요한 키만 메모리에 적재
+        self.data_list = []
+        for file_path in tqdm(self.pkl_files[:1000], desc="데이터를 메모리에 적재 중"):
+            try:
+                with open(file_path, 'rb') as f:
+                    data = pickle.load(f)
+                    # 필요한 키만 추출
+                    if self.norm_type == "bldg_bbox":
+                        regions = data['cluster_id2cluster_bldg_bbox']
+                        layouts = data['cluster_id2normalized_bldg_layout_bldg_bbox_list']
+                    elif self.norm_type == "cluster":
+                        regions = data['cluster_id2cluster_bbox']
+                        layouts = data['cluster_id2normalized_bldg_layout_cluster_list']
+                    elif self.norm_type == "blk":
+                        regions = None
+                        layouts = data['cluster_id2normalized_bldg_layout_blk_list']
+                    else:
+                        regions = None
+                        layouts = None
+                    
+                    blk_image_mask = data['blk_image_mask']
+
+                    # 필요한 데이터만 저장
+                    self.data_list.append({
+                        'regions': regions,
+                        'layouts': layouts,
+                        'blk_image_mask': blk_image_mask
+                    })
+            except EOFError:
+                print(f"EOFError: {file_path} 로드에 실패했습니다. 파일이 손상되었거나 불완전할 수 있습니다.")
+                continue  # 해당 파일 건너뜀
+            except Exception as e:
+                print(f"{file_path} 로드 중 오류 발생: {e}")
+                continue  # 해당 파일 건너뜀
+
+        self.data_length = len(self.data_list)
+        print(f"총 {self.data_length}개의 데이터를 로드합니다.")
 
     def __getitem__(self, idx):
         """
-        Retrieves a single item from the dataset at the specified index.
+        지정된 인덱스의 데이터를 반환합니다.
 
-        Parameters:
-        - idx (int): The index of the item to retrieve.
+        매개변수:
+        - idx (int): 가져올 데이터의 인덱스.
 
-        Returns:
-        - dict: A dictionary containing the padded matrices and padding masks for boundary adjacency matrix, building adjacency matrix, and boundary-building adjacency matrix, as well as the boundary positions and the number of boundaries and buildings. For test data, it also returns the filename of the loaded pickle file.
+        반환값:
+        - 데이터 텐서 및 관련 정보.
         """
-        indices_data = self.indices_dataset[idx]
-        masks_data = self.masks_dataset[idx]
-            
-        return {
-            "indices_data": torch.tensor(indices_data, dtype=torch.long),
-            "masks_data": torch.tensor(masks_data, dtype=torch.float32, requires_grad=True),
-            }
+        data_item = self.data_list[idx]
 
+        image_mask = data_item['blk_image_mask']
+        image_mask = Image.fromarray(image_mask)  # NumPy 배열을 PIL 이미지로 변환
+        image_mask = image_mask.convert("RGB")
+        image_mask = self.preprocess(image_mask)
+
+        layouts = data_item['layouts']
+
+        MAX_BUILDINGS = 300
+        PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
+
+        bldg_layout_list = []
+        for cluster_id, bldg_layouts in layouts.items():
+            for bldg_layout in bldg_layouts:
+                bldg_layout_list.append(bldg_layout)
+
+        bldg_layout_list = np.array(bldg_layout_list)
+        current_building_count = bldg_layout_list.shape[0]
+        padding_mask = np.ones(current_building_count, dtype=int)
+
+        if current_building_count < MAX_BUILDINGS:
+            padding_needed = MAX_BUILDINGS - current_building_count
+            padding_array = np.array([PADDING_BUILDING] * padding_needed)
+            bldg_layout_list = np.vstack((bldg_layout_list, padding_array))
+            padding_mask = np.concatenate([padding_mask, np.zeros(padding_needed, dtype=int)])
+        else:
+            bldg_layout_list = bldg_layout_list[:MAX_BUILDINGS]
+            padding_mask = padding_mask[:MAX_BUILDINGS]
+
+        return (torch.tensor(bldg_layout_list, dtype=torch.float32),
+                image_mask,
+                torch.tensor(padding_mask, dtype=torch.float32))
 
     def __len__(self):
         """
-        Returns the total number of items in the dataset.
+        데이터셋의 총 아이템 수를 반환합니다.
 
-        Returns:
-        - int: The total number of items in the dataset.
+        반환값:
+        - int: 데이터셋의 총 아이템 수.
         """
 
         return self.data_length

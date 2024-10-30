@@ -5,19 +5,23 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from shapely.geometry import Polygon, box
 from tqdm import tqdm
+import pickle
 
 def load_data(output_dir):
-    coords_path = os.path.join(output_dir, 'predicted_coords.npz')
+    coords_path = os.path.join(output_dir, 'predicted_coords.pkl')
 
     if not os.path.exists(coords_path):
         raise FileNotFoundError(f"Coordinates file not found at {coords_path}")
 
-    data = np.load(coords_path)
+    with open(coords_path, 'rb') as f:
+        data = pickle.load(f)
     predicted_coords = data['all_coords_outputs']
     gt_coords = data['gt_coords_outputs']
     min_coords_outputs = data['min_coords_outputs']
     range_max_outputs = data['range_max_outputs']
-    return predicted_coords, gt_coords, min_coords_outputs, range_max_outputs
+    range_max_outputs = data['range_max_outputs']
+    region_polygons_outputs = data['region_polygons_outputs']
+    return predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, region_polygons_outputs
 
 def denormalize_coords_uniform(norm_coords, min_coords, range_max):
     """
@@ -69,7 +73,7 @@ def create_bounding_box(x, y, w, h, r):
     
     return Polygon(rotated_corners)
 
-def visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, save_dir, sample_size=100):
+def visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, region_polygons_outputs, save_dir, sample_size=100):
     """
     Visualize the processed coordinates.
 
@@ -85,25 +89,32 @@ def visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs
     for i in tqdm(range(num_samples)):
         plt.figure(figsize=(8, 8))
         ax = plt.gca()
-
-        if len(min_coords_outputs) > 0:
-            min_coords = min_coords_outputs[i]
-            range_max = range_max_outputs[i][0]
-
-        layout_i = predicted_coords[i]  # Shape: (num_coords, 2)
-        for layout_ii in layout_i:
-            x, y, w, h, r, c = layout_ii
-            if c < 0.5:
-                continue
+        
+        if region_polygons_outputs is not None:
+            region_polygons = region_polygons_outputs[i]
             
-            bbox = create_bounding_box(x, y, w, h, r * 360)
+            for x, y in region_polygons:
+                ax.plot(x, y, color='black')
+        
+        for j in range(len(predicted_coords[i])):
+            if len(min_coords_outputs[i]) > 0:
+                min_coords = min_coords_outputs[i][j]
+                range_max = range_max_outputs[i][j][0]
 
-            if len(min_coords_outputs) > 0:
-                bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
-                bbox = Polygon(bbox_coords)
+            layout_i = predicted_coords[i][j]  # Shape: (num_coords, 2)
+            for layout_ii in layout_i:
+                x, y, w, h, r, c = layout_ii
+                if c < 0.5:
+                    continue
+                
+                bbox = create_bounding_box(x, y, w, h, r * 360)
 
-            x, y = bbox.exterior.xy
-            ax.fill(x, y, color='black')  # 색상 추가
+                if len(min_coords_outputs[i]) > 0:
+                    bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
+                    bbox = Polygon(bbox_coords)
+
+                x, y = bbox.exterior.xy
+                ax.fill(x, y, color='black')  # 색상 추가
 
         ax.set_aspect('equal')
         ax.axis('off')  # 축, 틱, 라벨 제거
@@ -119,24 +130,31 @@ def visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs
     for i in tqdm(range(num_samples)):
         plt.figure(figsize=(8, 8))
         ax = plt.gca()
-
-        if len(min_coords_outputs) > 0:
-            min_coords = min_coords_outputs[i]
-            range_max = range_max_outputs[i][0]
         
-        layout_i = gt_coords[i]  # Shape: (num_coords, 2)
-        for layout_ii in layout_i:
-            x, y, w, h, r, c = layout_ii
-            if c < 0.5:
-                continue
-            bbox = create_bounding_box(x, y, w, h, r * 360)
+        if region_polygons_outputs is not None:
+            region_polygons = region_polygons_outputs[i]
+            
+            for x, y in region_polygons:
+                ax.plot(x, y, color='black')
 
-            if len(min_coords_outputs) > 0:
-                bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
-                bbox = Polygon(bbox_coords)
+        for j in range(len(gt_coords[i])):
+            if len(min_coords_outputs[i]) > 0:
+                min_coords = min_coords_outputs[i][j]
+                range_max = range_max_outputs[i][j][0]
+            
+            layout_i = gt_coords[i][j]  # Shape: (num_coords, 2)
+            for layout_ii in layout_i:
+                x, y, w, h, r, c = layout_ii
+                if c < 0.5:
+                    continue
+                bbox = create_bounding_box(x, y, w, h, r * 360)
 
-            x, y = bbox.exterior.xy
-            ax.fill(x, y, color='black')  # 색상 추가
+                if len(min_coords_outputs[i]) > 0:
+                    bbox_coords = denormalize_coords_uniform(bbox.exterior.coords, min_coords, range_max)
+                    bbox = Polygon(bbox_coords)
+
+                x, y = bbox.exterior.xy
+                ax.fill(x, y, color='black')  # 색상 추가
 
         ax.set_aspect('equal')
         ax.axis('off')  # 축, 틱, 라벨 제거
@@ -153,17 +171,23 @@ def visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize Inference Results.')
-    parser.add_argument('--output_dir', type=str, default='inference_outputs/d_256_cb_512_coords_continuous_norm_blk', help='Directory where inference results are saved.')
-    parser.add_argument('--save_dir', type=str, default='visualizations', help='Directory to save the visualization plots.')
+    parser.add_argument('--output_dir', type=str, default='inference_outputs/d_256_cb_512_coords_continuous_norm_blk_generate_original', help='Directory where inference results are saved.')
+    parser.add_argument('--save_dir', type=str, default='visualizations/', help='Directory to save the visualization plots.')
     parser.add_argument('--sample_size', type=int, default=1000, help='Number of individual samples to visualize.')
     parser.add_argument('--aggregate', action='store_true', help='Whether to create an aggregate visualization.')
+    parser.add_argument('--vis_blk', type=bool, default=False, help='Whether to create an aggregate visualization.')
     args = parser.parse_args()
 
-    model_name = args.output_dir.split('/')[1]
-    predicted_coords, gt_coords, min_coords_outputs, range_max_outputs = load_data(args.output_dir)
+    predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, region_polygons_outputs = load_data(args.output_dir)
+
+    if not args.vis_blk:
+        model_name = args.output_dir.split('/')[1]
+        region_polygons_outputs = None
+    else:
+        model_name = args.output_dir.split('/')[1] + '_w_blk'
 
     # Visualize individual samples
-    visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, args.save_dir + '/' + model_name, sample_size=args.sample_size)
+    visualize(predicted_coords, gt_coords, min_coords_outputs, range_max_outputs, region_polygons_outputs, args.save_dir + '/' + model_name, sample_size=args.sample_size)
 
 if __name__ == "__main__":
     main()

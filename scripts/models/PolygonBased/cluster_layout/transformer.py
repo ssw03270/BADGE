@@ -4,8 +4,8 @@ import torch.nn.functional as F
 
 import numpy as np
 
-from layer import EncoderLayer
-from vqvae import VectorQuantizer
+from .layer import EncoderLayer
+from .vqvae import VectorQuantizer
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_hid, n_node):
@@ -131,6 +131,20 @@ class ContinuousTransformer(nn.Module):
         loss_coords = F.mse_loss(coords_output, batch.clone())
 
         return coords_output, loss_coords, vq_loss, perplexity
+    
+    def sampling(self, batch):
+        x = self.encoding(batch)
+
+        enc_output = self.encoder(x)
+
+        z = self.vq.sampling(enc_output)
+
+        dec_output = self.decoder(z)
+
+        coords_output = self.coords_fc(dec_output)
+        coords_output = torch.sigmoid(coords_output)
+
+        return coords_output
 
 class DiscreteTransformer(nn.Module):
     def __init__(self, d_model, d_inner, n_layer, n_head, dropout, codebook_size, commitment_cost, n_tokens):
@@ -180,11 +194,18 @@ class DiscreteTransformer(nn.Module):
 
         return dec_output, bbox_loss, vq_loss, perplexity
     
-    # def get_encoding_indices(self, batch):
-    #     x = self.encoding(batch)
-    #     enc_output = self.encoder(x)
+    def sampling(self, batch):
+        bbox = batch.view(batch.shape[0], -1)
+        bbox = self.embed(bbox)
+        
+        enc_output = self.encoder(bbox)
 
-    #     enc_output = enc_output.mean(dim=1, keepdim=True)  # 평균화하여 shape을 (batch, 1, feature dim)으로 변경
-    #     encoding_indices = self.vq.get_encoding_indices(enc_output)
+        z = self.vq.sampling(enc_output)
 
-    #     return encoding_indices
+        dec_output = self.decoder(z)
+
+        dec_output = self.bbox_fc(dec_output)
+
+        dec_output = torch.sigmoid(dec_output)
+
+        return dec_output

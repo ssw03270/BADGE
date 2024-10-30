@@ -1,6 +1,8 @@
 import os
 import argparse
 import numpy as np
+import pickle
+
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -8,8 +10,12 @@ from accelerate import Accelerator
 from accelerate.utils import set_seed
 from tqdm.auto import tqdm
 
-from dataloader import ClusterLayoutDataset
-from transformer import ContinuousTransformer, DiscreteTransformer
+import sys
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..'))
+sys.path.append(project_root)
+
+from sampling_dataloader import ClusterLayoutDataset
+from scripts.models.PolygonBased.cluster_layout.transformer import ContinuousTransformer, DiscreteTransformer
 
 def custom_collate_fn(batch):
     batch = [item for item in batch if item is not None]
@@ -23,6 +29,7 @@ def custom_collate_fn(batch):
     bldg_layout_list = [item[0] for item in batch]  # 건물 레이아웃 데이터
     min_coords_list = [item[1] for item in batch]   # 최소 좌표
     range_max_list = [item[2] for item in batch]    # 최대 범위
+    region_polygons = [item[3] for item in batch]
 
     # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
     # 건물 레이아웃 데이터는 텐서로 변환
@@ -30,7 +37,13 @@ def custom_collate_fn(batch):
     min_coords_tensor = torch.cat(min_coords_list, dim=0)
     range_max_tensor = torch.cat(range_max_list, dim=0)
 
-    return bldg_layout_tensor, min_coords_tensor, range_max_tensor
+    bldg_layout_start_indices = []
+    current_index = 0
+    for layout in bldg_layout_list:
+        bldg_layout_start_indices.append(current_index)
+        current_index += layout.shape[0]  # 레이아웃의 첫 번째 차원을 더해 인덱스를 증가
+
+    return bldg_layout_tensor, min_coords_tensor, range_max_tensor, bldg_layout_start_indices, region_polygons
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
@@ -44,11 +57,12 @@ def main():
     parser.add_argument("--coords_type", type=str, default="continuous", help="coordinate type")
     parser.add_argument("--norm_type", type=str, default="blk", help="coordinate type")
     parser.add_argument("--model_name", type=str, default="none", help="coordinate type")
-    parser.add_argument("--inference_type", type=str, default="generate", help="coordinate type")
+    parser.add_argument("--inference_type", type=str, default="generate", choices=["generate", "recon"],help="coordinate type")
+    parser.add_argument("--retrieval_type", type=str, default="retrieval", choices=["original", "retrieval"],help="coordinate type")
     args = parser.parse_args()
 
     if args.model_name == "none":
-        args.model_name = f"d_{args.d_model}_cb_{args.codebook_size}_coords_{args.coords_type}_norm_{args.norm_type}"
+        args.model_name = f"d_{args.d_model}_cb_{args.codebook_size}_coords_{args.coords_type}_norm_{args.norm_type}_{args.inference_type}_{args.retrieval_type}"
         
     # Initialize Accelerator
     accelerator = Accelerator()
@@ -59,7 +73,7 @@ def main():
     os.makedirs(args.output_dir + '/' + args.model_name, exist_ok=True)
 
     # Load test dataset
-    test_dataset = ClusterLayoutDataset(data_type="test", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
+    test_dataset = ClusterLayoutDataset(data_type="test", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type, retrieval_type=args.retrieval_type)
     test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
     # 모델 초기화
@@ -90,6 +104,7 @@ def main():
     gt_coords_outputs = []
     min_coords_outputs = []
     range_max_outputs = []
+    region_polygons_outputs = []
 
     # Inference loop
     with torch.no_grad():
@@ -98,6 +113,8 @@ def main():
             data = batch[0]
             min_coords = batch[1]
             range_max = batch[2]
+            start_indices = batch[3]
+            region_polygons = batch[4]
 
             # 모델 Forward
             if args.inference_type == 'recon':
@@ -114,21 +131,28 @@ def main():
                 bbox_output[:, :, :5] = bbox_output[:, :, :5] / 63
                 data[:, :, :5] = data[:, :, :5] / 63
 
-            all_coords_outputs.append(bbox_output.cpu().numpy())
-            gt_coords_outputs.append(data.cpu().numpy())
-            min_coords_outputs.append(min_coords.cpu().numpy())
-            range_max_outputs.append(range_max.cpu().numpy())
+            for i in range(len(start_indices) - 1):
+                all_coords_outputs.append(bbox_output[start_indices[i]:start_indices[i+1]].cpu().numpy())
+                gt_coords_outputs.append(data[start_indices[i]:start_indices[i+1]].cpu().numpy())
+                min_coords_outputs.append(min_coords[start_indices[i]:start_indices[i+1]].cpu().numpy())
+                range_max_outputs.append(range_max[start_indices[i]:start_indices[i+1]].cpu().numpy())
+            
+            for region_poly in region_polygons:
+                region_polygons_outputs.append(region_poly)
 
-    all_coords_outputs = np.concatenate(all_coords_outputs, axis=0)
-    gt_coords_outputs = np.concatenate(gt_coords_outputs, axis=0)
-    min_coords_outputs = np.concatenate(min_coords_outputs, axis=0)
-    range_max_outputs = np.concatenate(range_max_outputs, axis=0)
+    coords_output_path = os.path.join(args.output_dir + '/' + args.model_name, 'predicted_coords.pkl')
 
+    results = {
+        'all_coords_outputs': all_coords_outputs,
+        'gt_coords_outputs': gt_coords_outputs,
+        'min_coords_outputs': min_coords_outputs,
+        'range_max_outputs': range_max_outputs,
+        'region_polygons_outputs': region_polygons_outputs
+    }
 
-    # Save the outputs
-    coords_output_path = os.path.join(args.output_dir + '/' + args.model_name, 'predicted_coords.npz')
-    np.savez(f'{coords_output_path}', all_coords_outputs=all_coords_outputs, gt_coords_outputs=gt_coords_outputs,
-             min_coords_outputs=min_coords_outputs, range_max_outputs=range_max_outputs)
+    # 데이터를 pkl 파일로 저장
+    with open(coords_output_path, 'wb') as f:
+        pickle.dump(results, f)
 
     if accelerator.is_main_process:
         print(f"Inference completed. Results saved to '{args.output_dir + '/' + args.model_name}'")

@@ -164,6 +164,7 @@ cython_debug/
 scripts/token.py
 *.pkl
 *.png
+*.bin
 .idea
 /inference_outputs
 /visualizations
