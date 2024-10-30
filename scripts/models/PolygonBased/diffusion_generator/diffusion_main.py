@@ -23,7 +23,6 @@ def main():
     parser.add_argument('--val_batch_size', type=int, default=128, required=False, help='Batch size for validation.')
     parser.add_argument('--lr', type=float, default=0.00001, required=False, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=0.02, required=False, help='Weight decay.')
-    parser.add_argument('--codebook_size', type=int, default=64, required=False, help='Codebook size.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
     parser.add_argument("--sample_t_max", default=999, help="maximum t in training", type=int)
     parser.add_argument("--local-rank", type=int, default=0, help="Local rank for distributed training")
