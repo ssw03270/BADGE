@@ -75,7 +75,7 @@ class BlkLayoutDataset(Dataset):
 
         # 필요한 키만 메모리에 적재
         self.data_list = []
-        for file_path in tqdm(self.pkl_files[:1000], desc="데이터를 메모리에 적재 중"):
+        for file_path in tqdm(self.pkl_files, desc="데이터를 메모리에 적재 중"):
             try:
                 with open(file_path, 'rb') as f:
                     data = pickle.load(f)
