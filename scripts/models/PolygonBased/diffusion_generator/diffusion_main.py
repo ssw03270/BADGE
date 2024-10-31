@@ -81,14 +81,9 @@ def main():
     n_layer = 4
     n_head = 8
     dropout = 0.1
-    if args.coords_type == "continuous":
-        model = Diffusion(num_timesteps=1000, n_head=n_head, d_model=args.d_model,
-                          d_inner=d_inner, seq_dim=6, n_layer=n_layer,
-                          device=device, ddim_num_steps=200, dropout=dropout)
-    elif args.coords_type == "discrete":
-        model = Diffusion(num_timesteps=1000, n_head=n_head, d_model=args.d_model,
-                          d_inner=d_inner, seq_dim=6, n_layer=n_layer,
-                          device=device, ddim_num_steps=200, dropout=dropout)
+    model = Diffusion(num_timesteps=1000, n_head=n_head, d_model=args.d_model,
+                        d_inner=d_inner, seq_dim=6, n_layer=n_layer,
+                        device=device, ddim_num_steps=200, dropout=dropout)
     # 옵티마이저 및 스케줄러 설정
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
