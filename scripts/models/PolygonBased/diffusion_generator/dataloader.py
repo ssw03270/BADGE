@@ -74,7 +74,7 @@ class BlkLayoutDataset(Dataset):
             self.pkl_files = self.pkl_files[train_split:train_split + val_split]
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
-        self.pkl_files = self.pkl_files[:3000]
+        self.pkl_files = self.pkl_files
 
         # Load ResNet18 model
         self.resnet18 = models.resnet18(pretrained=True)
