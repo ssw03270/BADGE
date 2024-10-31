@@ -32,7 +32,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
 class BlkLayoutDataset(Dataset):
-    def __init__(self, data_type='train', device='cpu', batch_size=1024):
+    def __init__(self, data_type='train', device='cpu', batch_size=1024, processed_dir='./processed'):
         """
         BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
@@ -51,6 +51,8 @@ class BlkLayoutDataset(Dataset):
         ])
 
         self.data_type = data_type
+        self.processed_dir = processed_dir
+        os.makedirs(self.processed_dir, exist_ok=True)
 
         if data_type == 'test':
             self.folder_path = f'E:/Resources/Our_dataset_divided_without_segmentation_mask'
@@ -76,69 +78,85 @@ class BlkLayoutDataset(Dataset):
             self.pkl_files = self.pkl_files[train_split + val_split:]
         self.pkl_files = self.pkl_files
 
-        # Load ResNet18 model
-        self.resnet18 = models.resnet18(pretrained=True)
-        modules = list(self.resnet18.children())[:-1]  # Remove the last FC layer
-        self.resnet18 = torch.nn.Sequential(*modules)
-        self.resnet18 = self.resnet18.to(self.device)
-        self.resnet18.eval()
+        # Define the path for the preprocessed pickle file
+        self.preprocessed_file = os.path.join(self.processed_dir, f"{self.data_type}_preprocess.pkl")
 
-        self.data_list = []
-        image_tensors = []
-        region_polygons_list = []
-        layouts_list = []
-        batch_count = 0
+        if os.path.exists(self.preprocessed_file):
+            print(f"Loading preprocessed data from {self.preprocessed_file}...")
+            with open(self.preprocessed_file, 'rb') as f:
+                self.data_list = pickle.load(f)
+            self.data_length = len(self.data_list)
+            print(f"총 {self.data_length}개의 데이터를 로드했습니다 (from preprocessed file).")
+        else:
+            # Load ResNet18 model
+            self.resnet18 = models.resnet18(pretrained=True)
+            modules = list(self.resnet18.children())[:-1]  # Remove the last FC layer
+            self.resnet18 = torch.nn.Sequential(*modules)
+            self.resnet18 = self.resnet18.to(self.device)
+            self.resnet18.eval()
 
-        for idx, file_path in enumerate(tqdm(self.pkl_files, desc="Batch Processing Data")):
-            try:
-                with open(file_path, 'rb') as f:
-                    data = pickle.load(f)
-                    region_polygons = data['region_id2region_polygon']
-                    layouts = data['cluster_id2normalized_bldg_layout_blk_list']
-                    image_mask = data['blk_image_mask']
+            self.data_list = []
+            image_tensors = []
+            region_polygons_list = []
+            layouts_list = []
+            batch_count = 0
 
-                # Accumulate data for the batch
-                region_polygons_list.append([region_poly.exterior.coords.xy for region_poly in region_polygons.values()])
-                layouts_list.append(layouts)
+            for idx, file_path in enumerate(tqdm(self.pkl_files, desc="Batch Processing Data")):
+                try:
+                    with open(file_path, 'rb') as f:
+                        data = pickle.load(f)
+                        region_polygons = data['region_id2region_polygon']
+                        layouts = data['cluster_id2normalized_bldg_layout_blk_list']
+                        image_mask = data['blk_image_mask']
 
-                # Convert NumPy array to PIL image and preprocess
-                image_mask = Image.fromarray(image_mask).convert("RGB")
-                image_tensor = self.preprocess(image_mask)
-                image_tensors.append(image_tensor)
-                batch_count += 1
+                    # Accumulate data for the batch
+                    region_polygons_list.append([region_poly.exterior.coords.xy for region_poly in region_polygons.values()])
+                    layouts_list.append(layouts)
 
-                # Process batch
-                if batch_count == self.batch_size or idx == len(self.pkl_files) - 1:
-                    image_batch = torch.stack(image_tensors).to(self.device)
-                    with torch.no_grad():
-                        features = self.resnet18(image_batch).squeeze().cpu().numpy()
+                    # Convert NumPy array to PIL image and preprocess
+                    image_mask = Image.fromarray(image_mask).convert("RGB")
+                    image_tensor = self.preprocess(image_mask)
+                    image_tensors.append(image_tensor)
+                    batch_count += 1
 
-                    # Ensure features is 2D
-                    if features.ndim == 1:
-                        features = features[np.newaxis, :]
+                    # Process batch
+                    if batch_count == self.batch_size or idx == len(self.pkl_files) - 1:
+                        image_batch = torch.stack(image_tensors).to(self.device)
+                        with torch.no_grad():
+                            features = self.resnet18(image_batch).squeeze().cpu().numpy()
 
-                    # Store data with features
-                    for feature, layouts_item, region_polygons_item in zip(features, layouts_list, region_polygons_list):
-                        self.data_list.append({
-                            'image_mask_feature': feature,
-                            'layouts': layouts_item,
-                            'region_polygons': region_polygons_item
-                        })
+                        # Ensure features is 2D
+                        if features.ndim == 1:
+                            features = features[np.newaxis, :]
 
-                    # Reset for next batch
-                    image_tensors = []
-                    region_polygons_list = []
-                    layouts_list = []
-                    batch_count = 0
-            except EOFError:
-                print(f"EOFError: Failed to load {file_path}. The file may be corrupted or incomplete.")
-                continue  # Skip this file
-            except Exception as e:
-                print(f"Error loading {file_path}: {e}")
-                continue  # Skip this file
+                        # Store data with features
+                        for feature, layouts_item, region_polygons_item in zip(features, layouts_list, region_polygons_list):
+                            self.data_list.append({
+                                'image_mask_feature': feature,
+                                'layouts': layouts_item,
+                                'region_polygons': region_polygons_item
+                            })
 
-        self.data_length = len(self.data_list)
-        print(f"총 {self.data_length}개의 데이터를 로드합니다.")
+                        # Reset for next batch
+                        image_tensors = []
+                        region_polygons_list = []
+                        layouts_list = []
+                        batch_count = 0
+                except EOFError:
+                    print(f"EOFError: Failed to load {file_path}. The file may be corrupted or incomplete.")
+                    continue  # Skip this file
+                except Exception as e:
+                    print(f"Error loading {file_path}: {e}")
+                    continue  # Skip this file
+
+            self.data_length = len(self.data_list)
+            print(f"총 {self.data_length}개의 데이터를 로드했습니다 (after preprocessing).")
+
+            # Save the preprocessed data to a pickle file for future use
+            print(f"Saving preprocessed data to {self.preprocessed_file}...")
+            with open(self.preprocessed_file, 'wb') as f:
+                pickle.dump(self.data_list, f)
+            print("Preprocessed data saved successfully.")
 
     def __getitem__(self, idx):
         """
