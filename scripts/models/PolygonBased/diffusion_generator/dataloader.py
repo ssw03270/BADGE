@@ -91,7 +91,7 @@ class BlkLayoutDataset(Dataset):
                     
                     image_mask = Image.fromarray(image_mask)  # NumPy 배열을 PIL 이미지로 변환
                     image_mask = image_mask.convert("RGB")
-                    image_mask = self.preprocess(image_mask).unsqueeze(0)
+                    image_mask = self.preprocess(image_mask).unsqueeze(0).to(device)
                     image_mask = self.resnet18(image_mask).squeeze().cpu().numpy()
                     
                 # 필요한 데이터만 저장
