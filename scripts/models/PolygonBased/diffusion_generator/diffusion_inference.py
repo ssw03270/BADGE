@@ -52,12 +52,12 @@ def main():
     parser.add_argument("--coords_type", type=str, default="continuous", help="coordinate type")
     parser.add_argument("--norm_type", type=str, default="blk", help="coordinate type")
     parser.add_argument("--model_name", type=str, default="none", help="coordinate type")
-    parser.add_argument("--inference_type", type=str, default="generate", choices=["generate", "recon"],help="coordinate type")
-    parser.add_argument("--retrieval_type", type=str, default="retrieval", choices=["original", "retrieval"],help="coordinate type")
+    parser.add_argument("--train_type", type=str, default="conditional", choices=["generation", "conditional"],help="coordinate type")
+    parser.add_argument("--retrieval_type", type=str, default="original", choices=["original", "retrieval"],help="coordinate type")
     args = parser.parse_args()
 
     if args.model_name == "none":
-        args.model_name = f"d_{args.d_model}_coords_{args.coords_type}_norm_{args.norm_type}_{args.inference_type}_{args.retrieval_type}"
+        args.model_name = f"{args.retrieval_type}_{args.train_type}"
         
     # Initialize Accelerator
     accelerator = Accelerator()
@@ -104,7 +104,7 @@ def main():
             region_poly = batch[3]
 
             # # 모델 Forward
-            layout_output = accelerator.unwrap_model(model).conditional_reverse_ddim(layout, image_mask)
+            layout_output = accelerator.unwrap_model(model).reverse_ddim(layout, image_mask, train_type=args.train_type)
             
             all_coords_outputs += layout_output.cpu().numpy().tolist()
             gt_coords_outputs += layout.cpu().numpy().tolist()

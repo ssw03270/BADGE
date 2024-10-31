@@ -195,28 +195,28 @@ def make_ddim_sampling_parameters(alphacums, ddim_timesteps, eta):
     return sigmas, alphas, alphas_prev
 
 
-def ddim_sample_loop(model, batch_size, timesteps, ddim_alphas, ddim_alphas_prev, ddim_sigmas, stochastic=True,
-                     seq_len=25, seq_dim=10):
+def ddim_sample_loop(model, real_layout, image_mask, timesteps, ddim_alphas, ddim_alphas_prev, ddim_sigmas, stochastic=True):
     device = next(model.parameters()).device
-    
-    b_t = 1 * stochastic * torch.randn_like(torch.zeros([batch_size, seq_len, seq_dim])).to(device)
-    
-    intermediates = {'y_inter': [b_t], 'pred_y0': [b_t]}
+    batch_size, seq_len, seq_dim = real_layout.shape
+
+    l_t = 1 * stochastic * torch.randn_like(torch.zeros([batch_size, seq_len, seq_dim])).to(device)
+
+    intermediates = {'y_inter': [l_t], 'pred_y0': [l_t]}
     time_range = np.flip(timesteps)
     total_steps = timesteps.shape[0]
-    # print(f"Running DDIM Sampling with {total_steps} timesteps")
+    # noise = 1 * torch.randn_like(real_layout).to(device)
 
     for i, step in enumerate(time_range):
         index = total_steps - i - 1
         t = torch.full((batch_size,), step, device=device, dtype=torch.long)
 
-        b_t, pred_y0 = ddim_sample_step(model, b_t, t, index, ddim_alphas,
+        l_t, pred_y0 = ddim_sample_step(model, l_t, image_mask, t, index, ddim_alphas,
                                         ddim_alphas_prev, ddim_sigmas)
 
-        intermediates['y_inter'].append(b_t)
+        intermediates['y_inter'].append(l_t)
         intermediates['pred_y0'].append(pred_y0)
 
-    return b_t, intermediates
+    return l_t, intermediates
 
 
 def rand_fix(batch_size, mask, ratio=0.2, n_elements=25, stochastic=True):
@@ -239,6 +239,9 @@ def ddim_cond_sample_loop(model, real_layout, image_mask, timesteps, ddim_alphas
 
     l_t = 1 * stochastic * torch.randn_like(torch.zeros([batch_size, seq_len, seq_dim])).to(device)
 
+    l_t[:, :, 2:4] = real_layout[:, :, 2:4]
+    l_t[:, :, 5] = real_layout[:, :,5]
+
     intermediates = {'y_inter': [l_t], 'pred_y0': [l_t]}
     time_range = np.flip(timesteps)
     total_steps = timesteps.shape[0]
@@ -247,9 +250,12 @@ def ddim_cond_sample_loop(model, real_layout, image_mask, timesteps, ddim_alphas
     for i, step in enumerate(time_range):
         index = total_steps - i - 1
         t = torch.full((batch_size,), step, device=device, dtype=torch.long)
-
+    
         l_t, pred_y0 = ddim_sample_step(model, l_t, image_mask, t, index, ddim_alphas,
                                         ddim_alphas_prev, ddim_sigmas)
+
+        l_t[:, :, 2:4] = real_layout[:, :, 2:4]
+        l_t[:, :, 5] = real_layout[:, :,5]
 
         intermediates['y_inter'].append(l_t)
         intermediates['pred_y0'].append(pred_y0)

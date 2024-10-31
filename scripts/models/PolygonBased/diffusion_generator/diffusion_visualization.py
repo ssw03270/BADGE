@@ -154,7 +154,7 @@ def main():
     parser.add_argument('--save_dir', type=str, default='visualizations/', help='Directory to save the visualization plots.')
     parser.add_argument('--sample_size', type=int, default=1000, help='Number of individual samples to visualize.')
     parser.add_argument('--aggregate', action='store_true', help='Whether to create an aggregate visualization.')
-    parser.add_argument('--vis_blk', type=bool, default=True, help='Whether to create an aggregate visualization.')
+    parser.add_argument('--vis_blk', type=bool, default=False, help='Whether to create an aggregate visualization.')
     args = parser.parse_args()
 
     predicted_coords, gt_coords, region_polygons_outputs = load_data(args.output_dir)
