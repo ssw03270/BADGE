@@ -32,7 +32,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
 class BlkLayoutDataset(Dataset):
-    def __init__(self, data_type='train', device='cpu'):
+    def __init__(self, data_type='train', device='cpu', batch_size=128):
         """
         BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
@@ -41,6 +41,8 @@ class BlkLayoutDataset(Dataset):
         """
 
         super(BlkLayoutDataset, self).__init__()
+        self.batch_size = batch_size
+        self.device = device
 
         self.preprocess = transforms.Compose([
             transforms.Resize((224, 224)),  # ResNet도 224x224 이미지를 입력으로 받음
@@ -74,39 +76,67 @@ class BlkLayoutDataset(Dataset):
             self.pkl_files = self.pkl_files[train_split + val_split:]
         self.pkl_files = self.pkl_files
 
+        # Load ResNet18 model
         self.resnet18 = models.resnet18(pretrained=True)
         modules = list(self.resnet18.children())[:-1]  # Remove the last FC layer
         self.resnet18 = torch.nn.Sequential(*modules)
-        self.resnet18 = self.resnet18.to(device)
+        self.resnet18 = self.resnet18.to(self.device)
         self.resnet18.eval()
-        
+
         self.data_list = []
-        for file_path in tqdm(self.pkl_files, desc="데이터를 메모리에 적재 중"):
+        image_tensors = []
+        region_polygons_list = []
+        layouts_list = []
+        batch_count = 0
+
+        for idx, file_path in enumerate(tqdm(self.pkl_files, desc="Batch Processing Data")):
             try:
                 with open(file_path, 'rb') as f:
                     data = pickle.load(f)
                     region_polygons = data['region_id2region_polygon']
                     layouts = data['cluster_id2normalized_bldg_layout_blk_list']
                     image_mask = data['blk_image_mask']
-                    
-                    image_mask = Image.fromarray(image_mask)  # NumPy 배열을 PIL 이미지로 변환
-                    image_mask = image_mask.convert("RGB")
-                    image_mask = self.preprocess(image_mask).unsqueeze(0).to(device)
-                    image_mask = self.resnet18(image_mask).squeeze().detach().cpu().numpy()
-                    
-                # 필요한 데이터만 저장
-                self.data_list.append({
-                    'image_mask': image_mask,
-                    'layouts': layouts,
-                    'region_polygons': [region_poly.exterior.coords.xy for region_poly in list(region_polygons.values())]
-                })
+
+                # Accumulate data for the batch
+                region_polygons_list.append([region_poly.exterior.coords.xy for region_poly in region_polygons.values()])
+                layouts_list.append(layouts)
+
+                # Convert NumPy array to PIL image and preprocess
+                image_mask = Image.fromarray(image_mask).convert("RGB")
+                image_tensor = self.preprocess(image_mask)
+                image_tensors.append(image_tensor)
+                batch_count += 1
+
+                # Process batch
+                if batch_count == self.batch_size or idx == len(self.pkl_files) - 1:
+                    image_batch = torch.stack(image_tensors).to(self.device)
+                    with torch.no_grad():
+                        features = self.resnet18(image_batch).squeeze().cpu().numpy()
+
+                    # Ensure features is 2D
+                    if features.ndim == 1:
+                        features = features[np.newaxis, :]
+
+                    # Store data with features
+                    for feature, layouts_item, region_polygons_item in zip(features, layouts_list, region_polygons_list):
+                        self.data_list.append({
+                            'image_mask_feature': feature,
+                            'layouts': layouts_item,
+                            'region_polygons': region_polygons_item
+                        })
+
+                    # Reset for next batch
+                    image_tensors = []
+                    region_polygons_list = []
+                    layouts_list = []
+                    batch_count = 0
             except EOFError:
-                print(f"EOFError: {file_path} 로드에 실패했습니다. 파일이 손상되었거나 불완전할 수 있습니다.")
-                continue  # 해당 파일 건너뜀
+                print(f"EOFError: Failed to load {file_path}. The file may be corrupted or incomplete.")
+                continue  # Skip this file
             except Exception as e:
-                print(f"{file_path} 로드 중 오류 발생: {e}")
-                continue  # 해당 파일 건너뜀
-            
+                print(f"Error loading {file_path}: {e}")
+                continue  # Skip this file
+
         self.data_length = len(self.data_list)
         print(f"총 {self.data_length}개의 데이터를 로드합니다.")
 
