@@ -69,12 +69,6 @@ class TransformerDecoder(nn.Module):
 
         self.n_layer = n_layer
 
-        self.resnet18 = models.resnet18(pretrained=True)
-        modules = list(self.resnet18.children())[:-1]  # Remove the last FC layer
-        self.resnet18 = torch.nn.Sequential(*modules)
-        self.resnet18 = self.resnet18.to(device)
-        self.resnet18.eval()
-
         self.encoding = nn.Linear(6, d_model)
 
         self.pos_enc = PositionalEncoding(d_model, n_node=n_tokens)
@@ -104,7 +98,7 @@ class TransformerDecoder(nn.Module):
         dec_input = x + self.pos_enc(x).expand(x.shape[0], -1, -1)
         dec_output = self.dropout(dec_input)
 
-        condition = self.resnet18(condition).squeeze().unsqueeze(1)
+        condition = condition.unsqueeze(1)
 
         for idx, dec_layer in enumerate(self.layer_stack):
             dec_output = dec_layer(dec_output, condition, timestep)
