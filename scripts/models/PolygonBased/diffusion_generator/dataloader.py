@@ -74,7 +74,7 @@ class BlkLayoutDataset(Dataset):
             self.pkl_files = self.pkl_files[train_split:train_split + val_split]
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
-        self.pkl_files = self.pkl_files[:30000]
+        self.pkl_files = self.pkl_files[:3000]
 
         # Load ResNet18 model
         self.resnet18 = models.resnet18(pretrained=True)
@@ -152,9 +152,9 @@ class BlkLayoutDataset(Dataset):
         """
         data = self.data_list[idx]
         
-        image_mask = data['blk_image_mask']
-        region_polygons = data['region_id2region_polygon']
-        layouts = data['cluster_id2normalized_bldg_layout_blk_list']
+        image_mask = data['image_mask_feature']
+        region_polygons = data['region_polygons']
+        layouts = data['layouts']
 
         MAX_BUILDINGS = 300
         PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
