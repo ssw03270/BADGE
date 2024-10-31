@@ -213,6 +213,6 @@ class Diffusion(nn.Module):
         elif train_type == 'conditional':
             layout_t_0, intermediates = \
                 ddim_cond_sample_loop(self.network, real_layout, image_mask, self.ddim_timesteps, self.ddim_alphas,
-                                    self.ddim_alphas_prev, self.ddim_sigmas, stochastic=stochastic)
+                                      self.ddim_alphas_prev, self.ddim_sigmas, stochastic=stochastic)
 
         return layout_t_0

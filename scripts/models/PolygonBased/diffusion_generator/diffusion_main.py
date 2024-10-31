@@ -114,8 +114,13 @@ def main():
 
             # # 모델 Forward
             t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
-            eps_theta, e, layout_output = model(layout, image_mask, t)
-            layout_output = torch.clamp(layout_output, min=-1, max=1) / 2 + 0.5
+            eps_theta, e, layout_output = model(layout, image_mask, t, train_type=args.train_type)
+
+            if args.train_type == 'generation':
+                layout_output = torch.clamp(layout_output, min=-1, max=1) / 2 + 0.5
+            elif args.train_type == 'conditional':
+                layout_output[:, :, 0:2] = torch.clamp(layout_output[:, :, 0:2], min=-1, max=1) / 2 + 0.5
+                layout_output[:, :, 4] = torch.clamp(layout_output[:, :, 4], min=-1, max=1) / 2 + 0.5
 
             recon_loss = F.mse_loss(layout_output, layout)
             diffusion_loss = F.mse_loss(e, eps_theta)
@@ -142,7 +147,7 @@ def main():
 
                 # # 모델 Forward
                 t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
-                eps_theta, e, layout_output = model(layout, image_mask, t)
+                eps_theta, e, layout_output = model(layout, image_mask, t, train_type=args.train_type)
                 layout_output = torch.clamp(layout_output, min=-1, max=1) / 2 + 0.5
 
                 recon_loss = F.mse_loss(layout_output, layout)
