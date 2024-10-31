@@ -32,7 +32,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
 class BlkLayoutDataset(Dataset):
-    def __init__(self, data_type='train', device='cpu', batch_size=128):
+    def __init__(self, data_type='train', device='cpu', batch_size=1024):
         """
         BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
