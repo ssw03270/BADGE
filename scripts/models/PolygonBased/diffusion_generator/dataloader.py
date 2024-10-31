@@ -30,7 +30,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
 class BlkLayoutDataset(Dataset):
-    def __init__(self, data_type='train', user_name='ssw03270', coords_type='continuous', norm_type="bldg_bbox"):
+    def __init__(self, data_type='train', user_name='ssw03270'):
         """
         BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
@@ -47,8 +47,6 @@ class BlkLayoutDataset(Dataset):
         ])
 
         self.data_type = data_type
-        self.coords_type = coords_type
-        self.norm_type = norm_type
 
         if data_type == 'test':
             self.folder_path = f'E:/Resources/Our_dataset_divided_without_segmentation_mask'

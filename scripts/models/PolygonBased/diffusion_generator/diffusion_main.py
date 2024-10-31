@@ -70,10 +70,10 @@ def main():
         )
 
     # 데이터셋 로드
-    train_dataset = BlkLayoutDataset(data_type="train", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
+    train_dataset = BlkLayoutDataset(data_type="train", user_name=args.user_name)
     train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=4, shuffle=True, collate_fn=custom_collate)
     
-    val_dataset = BlkLayoutDataset(data_type="val", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
+    val_dataset = BlkLayoutDataset(data_type="val", user_name=args.user_name)
     val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, num_workers=4, shuffle=False, collate_fn=custom_collate)
 
     # 모델 초기화
