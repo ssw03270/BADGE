@@ -32,7 +32,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
 class BlkLayoutDataset(Dataset):
-    def __init__(self, data_type='train', device='cpu', batch_size=1024, processed_dir='./processed'):
+    def __init__(self, data_type='train', device='cpu', batch_size=1024, processed_dir='./processed', is_main_process=True):
         """
         BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
@@ -85,6 +85,9 @@ class BlkLayoutDataset(Dataset):
             print(f"Loading preprocessed data from {self.preprocessed_file}...")
             with open(self.preprocessed_file, 'rb') as f:
                 self.data_list = pickle.load(f)
+
+            if data_type == 'test':
+                self.data_list = self.data_list[:1000]
             self.data_length = len(self.data_list)
             print(f"총 {self.data_length}개의 데이터를 로드했습니다 (from preprocessed file).")
         else:
@@ -153,10 +156,11 @@ class BlkLayoutDataset(Dataset):
             print(f"총 {self.data_length}개의 데이터를 로드했습니다 (after preprocessing).")
 
             # Save the preprocessed data to a pickle file for future use
-            print(f"Saving preprocessed data to {self.preprocessed_file}...")
-            with open(self.preprocessed_file, 'wb') as f:
-                pickle.dump(self.data_list, f)
-            print("Preprocessed data saved successfully.")
+            if is_main_process:
+                print(f"Saving preprocessed data to {self.preprocessed_file}...")
+                with open(self.preprocessed_file, 'wb') as f:
+                    pickle.dump(self.data_list, f)
+                print("Preprocessed data saved successfully.")
 
     def __getitem__(self, idx):
         """

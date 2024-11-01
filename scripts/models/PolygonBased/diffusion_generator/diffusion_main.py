@@ -70,10 +70,10 @@ def main():
         )
 
     # 데이터셋 로드
-    train_dataset = BlkLayoutDataset(data_type="train", device=device)
+    train_dataset = BlkLayoutDataset(data_type="train", device=device, is_main_process=accelerator.is_main_process)
     train_dataloader = DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=4, shuffle=True, collate_fn=custom_collate)
     
-    val_dataset = BlkLayoutDataset(data_type="val", device=device)
+    val_dataset = BlkLayoutDataset(data_type="val", device=device, is_main_process=accelerator.is_main_process)
     val_dataloader = DataLoader(val_dataset, batch_size=args.val_batch_size, num_workers=4, shuffle=False, collate_fn=custom_collate)
 
     # 모델 초기화
@@ -121,6 +121,7 @@ def main():
             # 역전파 및 최적화
             accelerator.backward(loss)
             optimizer.step()
+            torch.nn.utils.clip_grad_norm_(accelerator.unwrap_model(model).network.parameters(), 1.0)
             total_loss += loss.item()
 
             progress_bar.set_postfix({'loss': total_loss / (progress_bar.n + 1), 'lr': optimizer.param_groups[0]['lr']})

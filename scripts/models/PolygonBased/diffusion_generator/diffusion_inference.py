@@ -43,7 +43,7 @@ def custom_collate(batch):
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
     parser.add_argument('--user_name', type=str, default="ssw03270", required=False, help='User name.')
-    parser.add_argument('--checkpoint_path', type=str, default='./diffusion_checkpoints/d_512_coords_continuous_norm_blk/best_model.pt', help='Path to the model checkpoint.')
+    parser.add_argument('--checkpoint_path', type=str, default='./diffusion_checkpoints/original_conditional/best_model.pt', help='Path to the model checkpoint.')
     parser.add_argument('--output_dir', type=str, default='inference_outputs', help='Directory to save inference results.')
     parser.add_argument('--test_batch_size', type=int, default=512, required=False, help='Batch size for testing.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
@@ -68,7 +68,7 @@ def main():
     os.makedirs(args.output_dir + '/' + args.model_name, exist_ok=True)
 
     # Load test dataset
-    test_dataset = BlkLayoutDataset(data_type="test", user_name=args.user_name, coords_type=args.coords_type, norm_type=args.norm_type)
+    test_dataset = BlkLayoutDataset(data_type="test", device=device, is_main_process=accelerator.is_main_process)
     test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, num_workers=4, shuffle=False, collate_fn=custom_collate)
 
     # 모델 초기화
