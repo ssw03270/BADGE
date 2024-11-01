@@ -32,7 +32,8 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
     return normalized_coords, min_coords, [range_max], out_of_bounds
 
 class BlkLayoutDataset(Dataset):
-    def __init__(self, data_type='train', device='cpu', batch_size=1024, processed_dir='./processed', is_main_process=True):
+    def __init__(self, data_type='train', device='cpu', processed_dir='./processed', is_main_process=True,
+                 inference_type=None):
         """
         BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
@@ -41,7 +42,6 @@ class BlkLayoutDataset(Dataset):
         """
 
         super(BlkLayoutDataset, self).__init__()
-        self.batch_size = batch_size
         self.device = device
 
         self.preprocess = transforms.Compose([
@@ -76,91 +76,9 @@ class BlkLayoutDataset(Dataset):
             self.pkl_files = self.pkl_files[train_split:train_split + val_split]
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
-        self.pkl_files = self.pkl_files
 
-        # Define the path for the preprocessed pickle file
-        self.preprocessed_file = os.path.join(self.processed_dir, f"{self.data_type}_preprocess.pkl")
-
-        if os.path.exists(self.preprocessed_file):
-            print(f"Loading preprocessed data from {self.preprocessed_file}...")
-            with open(self.preprocessed_file, 'rb') as f:
-                self.data_list = pickle.load(f)
-
-            if data_type == 'test':
-                self.data_list = self.data_list[:1000]
-            self.data_length = len(self.data_list)
-            print(f"총 {self.data_length}개의 데이터를 로드했습니다 (from preprocessed file).")
-        else:
-            # Load ResNet18 model
-            self.resnet18 = models.resnet18(pretrained=True)
-            modules = list(self.resnet18.children())[:-1]  # Remove the last FC layer
-            self.resnet18 = torch.nn.Sequential(*modules)
-            self.resnet18 = self.resnet18.to(self.device)
-            self.resnet18.eval()
-
-            self.data_list = []
-            image_tensors = []
-            region_polygons_list = []
-            layouts_list = []
-            batch_count = 0
-
-            for idx, file_path in enumerate(tqdm(self.pkl_files, desc="Batch Processing Data")):
-                try:
-                    with open(file_path, 'rb') as f:
-                        data = pickle.load(f)
-                        region_polygons = data['region_id2region_polygon']
-                        layouts = data['cluster_id2normalized_bldg_layout_blk_list']
-                        image_mask = data['blk_image_mask']
-
-                    # Accumulate data for the batch
-                    region_polygons_list.append([region_poly.exterior.coords.xy for region_poly in region_polygons.values()])
-                    layouts_list.append(layouts)
-
-                    # Convert NumPy array to PIL image and preprocess
-                    image_mask = Image.fromarray(image_mask).convert("RGB")
-                    image_tensor = self.preprocess(image_mask)
-                    image_tensors.append(image_tensor)
-                    batch_count += 1
-
-                    # Process batch
-                    if batch_count == self.batch_size or idx == len(self.pkl_files) - 1:
-                        image_batch = torch.stack(image_tensors).to(self.device)
-                        with torch.no_grad():
-                            features = self.resnet18(image_batch).squeeze().cpu().numpy()
-
-                        # Ensure features is 2D
-                        if features.ndim == 1:
-                            features = features[np.newaxis, :]
-
-                        # Store data with features
-                        for feature, layouts_item, region_polygons_item in zip(features, layouts_list, region_polygons_list):
-                            self.data_list.append({
-                                'image_mask_feature': feature,
-                                'layouts': layouts_item,
-                                'region_polygons': region_polygons_item
-                            })
-
-                        # Reset for next batch
-                        image_tensors = []
-                        region_polygons_list = []
-                        layouts_list = []
-                        batch_count = 0
-                except EOFError:
-                    print(f"EOFError: Failed to load {file_path}. The file may be corrupted or incomplete.")
-                    continue  # Skip this file
-                except Exception as e:
-                    print(f"Error loading {file_path}: {e}")
-                    continue  # Skip this file
-
-            self.data_length = len(self.data_list)
-            print(f"총 {self.data_length}개의 데이터를 로드했습니다 (after preprocessing).")
-
-            # Save the preprocessed data to a pickle file for future use
-            if is_main_process:
-                print(f"Saving preprocessed data to {self.preprocessed_file}...")
-                with open(self.preprocessed_file, 'wb') as f:
-                    pickle.dump(self.data_list, f)
-                print("Preprocessed data saved successfully.")
+        self.data_length = len(self.pkl_files)
+        print(f"총 {self.data_length}개의 데이터를 로드했습니다 (after preprocessing).")
 
     def __getitem__(self, idx):
         """
@@ -172,35 +90,49 @@ class BlkLayoutDataset(Dataset):
         반환값:
         - 데이터 텐서 및 관련 정보.
         """
-        data = self.data_list[idx]
-        
-        image_mask = data['image_mask_feature']
-        region_polygons = data['region_polygons']
-        layouts = data['layouts']
+        try:
+            with open(self.pkl_files[idx], 'rb') as f:
+                data = pickle.load(f)
+                region_polygons = data['region_id2region_polygon']
+                layouts = data['cluster_id2normalized_bldg_layout_blk_list']
+                image_mask = data['blk_image_mask']
 
-        MAX_BUILDINGS = 300
-        PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
+            # Accumulate data for the batch
+            region_polygons = [region_poly.exterior.coords.xy for region_poly in region_polygons.values()]
 
-        bldg_layout_list = []
-        for cluster_id, bldg_layouts in layouts.items():
-            for bldg_layout in bldg_layouts:
-                bldg_layout_list.append(bldg_layout)
+            image_mask = Image.fromarray(image_mask).convert("RGB")
+            image_mask = self.preprocess(image_mask)
 
-        bldg_layout_list = np.array(bldg_layout_list)
-        current_building_count = bldg_layout_list.shape[0]
-        padding_mask = np.ones(current_building_count, dtype=int)
+            MAX_BUILDINGS = 300
+            PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
 
-        if current_building_count < MAX_BUILDINGS:
-            padding_needed = MAX_BUILDINGS - current_building_count
-            padding_array = np.array([PADDING_BUILDING] * padding_needed)
-            bldg_layout_list = np.vstack((bldg_layout_list, padding_array))
-            padding_mask = np.concatenate([padding_mask, np.zeros(padding_needed, dtype=int)])
-        else:
-            bldg_layout_list = bldg_layout_list[:MAX_BUILDINGS]
-            padding_mask = padding_mask[:MAX_BUILDINGS]
+            bldg_layout_list = []
+            for cluster_id, bldg_layouts in layouts.items():
+                for bldg_layout in bldg_layouts:
+                    bldg_layout_list.append(bldg_layout)
 
+            bldg_layout_list = np.array(bldg_layout_list)
+            current_building_count = bldg_layout_list.shape[0]
+            padding_mask = np.ones(current_building_count, dtype=int)
+
+            if current_building_count < MAX_BUILDINGS:
+                padding_needed = MAX_BUILDINGS - current_building_count
+                padding_array = np.array([PADDING_BUILDING] * padding_needed)
+                bldg_layout_list = np.vstack((bldg_layout_list, padding_array))
+                padding_mask = np.concatenate([padding_mask, np.zeros(padding_needed, dtype=int)])
+            else:
+                bldg_layout_list = bldg_layout_list[:MAX_BUILDINGS]
+                padding_mask = padding_mask[:MAX_BUILDINGS]
+                
+        except EOFError:
+            # print(f"EOFError: Failed to load {self.pkl_files[idx]}. The file may be corrupted or incomplete.")
+            return None  # Skip this file
+        except Exception as e:
+            # print(f"Error loading {self.pkl_files[idx]}: {e}")
+            return None  # Skip this file
+             
         return (torch.tensor(bldg_layout_list, dtype=torch.float32),
-                torch.tensor(image_mask, dtype=torch.float32),
+                image_mask,
                 torch.tensor(padding_mask, dtype=torch.float32),
                 region_polygons)
 

@@ -71,7 +71,7 @@ class ClusterLayoutDataset(Dataset):
 
         # 필요한 키만 메모리에 적재
         self.data_list = []
-        for file_path in tqdm(self.pkl_files[:1000], desc="데이터를 메모리에 적재 중"):
+        for file_path in tqdm(self.pkl_files, desc="데이터를 메모리에 적재 중"):
             try:
                 with open(file_path, 'rb') as f:
                     data = pickle.load(f)
@@ -92,6 +92,10 @@ class ClusterLayoutDataset(Dataset):
                         else:
                             regions = None
                             layouts = None
+                    file_path = file_path.replace(self.folder_path, '')
+                    file_path = file_path.replace('\\', '/')
+                    source_file_path = file_path
+
                 elif retrieval_type == 'retrieval':
                     file_path = file_path.replace(self.folder_path, '')
                     file_path = file_path.replace('\\', '/')
@@ -110,11 +114,12 @@ class ClusterLayoutDataset(Dataset):
                         else:
                             regions = None
                             layouts = None
-
+                    source_file_path = file_path
                 # 필요한 데이터만 저장
                 self.data_list.append({
                     'regions': regions,
                     'layouts': layouts,
+                    'source_file_path': source_file_path,
                     'region_polygons': [region_poly.exterior.coords.xy for region_poly in list(region_polygons.values())]
                 })
             except EOFError:
@@ -141,6 +146,7 @@ class ClusterLayoutDataset(Dataset):
         regions = data_item['regions']
         layouts = data_item['layouts']
         region_polygons = data_item['region_polygons']
+        source_file_path = data_item['source_file_path']
 
         MAX_BUILDINGS = 10
         PADDING_BUILDING = [0, 0, 0, 0, 0, 0]
@@ -175,7 +181,8 @@ class ClusterLayoutDataset(Dataset):
             return (torch.tensor(bldg_layout_list, dtype=torch.float32),
                     torch.tensor(min_coords_list, dtype=torch.float32),
                     torch.tensor(range_max_list, dtype=torch.float32),
-                    region_polygons)
+                    region_polygons,
+                    source_file_path)
 
         elif self.coords_type == 'discrete':
             bldg_layout_list[:, :5] = np.floor(bldg_layout_list[:, :5] * 63).astype(int)
@@ -184,7 +191,8 @@ class ClusterLayoutDataset(Dataset):
             return (torch.tensor(bldg_layout_list, dtype=torch.long),
                     torch.tensor(min_coords_list, dtype=torch.float32),
                     torch.tensor(range_max_list, dtype=torch.float32),
-                    region_polygons)
+                    region_polygons,
+                    source_file_path)
 
     def __len__(self):
         """

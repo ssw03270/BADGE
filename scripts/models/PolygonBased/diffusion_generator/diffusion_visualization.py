@@ -98,7 +98,6 @@ def visualize(predicted_coords, gt_coords, region_polygons_outputs, save_dir, sa
             x, y, w, h, r, c = layout_ii
             if c < 0.5:
                 continue
-            
             bbox = create_bounding_box(x, y, w, h, r * 360)
 
             x, y = bbox.exterior.xy
@@ -150,7 +149,7 @@ def visualize(predicted_coords, gt_coords, region_polygons_outputs, save_dir, sa
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize Inference Results.')
-    parser.add_argument('--output_dir', type=str, default='inference_outputs/original_conditional', help='Directory where inference results are saved.')
+    parser.add_argument('--output_dir', type=str, default='inference_outputs/retrieval_conditional_refine', help='Directory where inference results are saved.')
     parser.add_argument('--save_dir', type=str, default='visualizations/', help='Directory to save the visualization plots.')
     parser.add_argument('--sample_size', type=int, default=1000, help='Number of individual samples to visualize.')
     parser.add_argument('--aggregate', action='store_true', help='Whether to create an aggregate visualization.')

@@ -30,6 +30,7 @@ def custom_collate_fn(batch):
     min_coords_list = [item[1] for item in batch]   # 최소 좌표
     range_max_list = [item[2] for item in batch]    # 최대 범위
     region_polygons = [item[3] for item in batch]
+    source_file_path = [item[4] for item in batch]
 
     # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
     # 건물 레이아웃 데이터는 텐서로 변환
@@ -42,8 +43,9 @@ def custom_collate_fn(batch):
     for layout in bldg_layout_list:
         bldg_layout_start_indices.append(current_index)
         current_index += layout.shape[0]  # 레이아웃의 첫 번째 차원을 더해 인덱스를 증가
+    bldg_layout_start_indices.append(current_index)
 
-    return bldg_layout_tensor, min_coords_tensor, range_max_tensor, bldg_layout_start_indices, region_polygons
+    return bldg_layout_tensor, min_coords_tensor, range_max_tensor, bldg_layout_start_indices, region_polygons, source_file_path
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
@@ -105,6 +107,7 @@ def main():
     min_coords_outputs = []
     range_max_outputs = []
     region_polygons_outputs = []
+    source_file_paths = []
 
     # Inference loop
     with torch.no_grad():
@@ -115,6 +118,7 @@ def main():
             range_max = batch[2]
             start_indices = batch[3]
             region_polygons = batch[4]
+            source_file_path = batch[5]
 
             # 모델 Forward
             if args.inference_type == 'recon':
@@ -139,24 +143,44 @@ def main():
             
             for region_poly in region_polygons:
                 region_polygons_outputs.append(region_poly)
+            for file_path in source_file_path:
+                source_file_paths.append(file_path)
 
     coords_output_path = os.path.join(args.output_dir + '/' + args.model_name, 'predicted_coords.pkl')
-
     results = {
         'all_coords_outputs': all_coords_outputs,
         'gt_coords_outputs': gt_coords_outputs,
         'min_coords_outputs': min_coords_outputs,
         'range_max_outputs': range_max_outputs,
-        'region_polygons_outputs': region_polygons_outputs
+        'region_polygons_outputs': region_polygons_outputs,
+        'source_file_paths': source_file_paths
     }
 
     # 데이터를 pkl 파일로 저장
     with open(coords_output_path, 'wb') as f:
         pickle.dump(results, f)
 
+    generated_output_dict = {}
+    for key, value in zip(source_file_paths, all_coords_outputs):
+        layouts = {}
+        for id, cluster in enumerate(value):
+            layout = []
+            for building in cluster:
+                if building[-1] < 0.5:
+                    continue
+                building[-1] = 1
+                layout.append(building.tolist())
+            layouts[id] = layout
+        generated_output_dict[key] = layouts
+
+    generated_output_path = os.path.join(args.output_dir + '/' + args.model_name, 'generated_output_dict.pkl')
+    with open(generated_output_path, 'wb') as f:
+        pickle.dump(generated_output_dict, f)
+
     if accelerator.is_main_process:
         print(f"Inference completed. Results saved to '{args.output_dir + '/' + args.model_name}'")
         print(f"Predicted coordinates saved to: {coords_output_path}")
+        print(f"Predicted coordinates saved to: {generated_output_path}")
 
 if __name__ == "__main__":
     main()

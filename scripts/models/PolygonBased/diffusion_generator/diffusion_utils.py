@@ -237,15 +237,18 @@ def ddim_cond_sample_loop(model, real_layout, image_mask, timesteps, ddim_alphas
     device = next(model.parameters()).device
     batch_size, seq_len, seq_dim = real_layout.shape
 
-    l_t = 1 * stochastic * torch.randn_like(torch.zeros([batch_size, seq_len, seq_dim])).to(device)
+    # l_t = 1 * stochastic * torch.randn_like(torch.zeros([batch_size, seq_len, seq_dim])).to(device)
 
-    l_t[:, :, 2:4] = real_layout[:, :, 2:4]
-    l_t[:, :, 5] = real_layout[:, :,5]
+    # l_t[:, :, 2:4] = real_layout[:, :, 2:4]
+    # l_t[:, :, 5] = real_layout[:, :,5]
+    l_t = real_layout
 
     intermediates = {'y_inter': [l_t], 'pred_y0': [l_t]}
-    time_range = np.flip(timesteps)
-    total_steps = timesteps.shape[0]
+    # time_range = np.flip(timesteps)
+    # total_steps = timesteps.shape[0]
     # noise = 1 * torch.randn_like(real_layout).to(device)
+    total_steps = sum(timesteps <= 201)
+    time_range = np.flip(timesteps[:total_steps])
 
     for i, step in enumerate(time_range):
         index = total_steps - i - 1
