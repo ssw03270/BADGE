@@ -232,23 +232,26 @@ def rand_fix(batch_size, mask, ratio=0.2, n_elements=25, stochastic=True):
     return indices
 
 
-def ddim_cond_sample_loop(model, real_layout, image_mask, timesteps, ddim_alphas, ddim_alphas_prev, ddim_sigmas, stochastic=True, cond='c', ratio=0.2):
+def ddim_cond_sample_loop(model, real_layout, image_mask, timesteps, ddim_alphas, ddim_alphas_prev, ddim_sigmas, stochastic=True, cond='c', ratio=0.2, inference_type='refine'):
 
     device = next(model.parameters()).device
     batch_size, seq_len, seq_dim = real_layout.shape
 
-    # l_t = 1 * stochastic * torch.randn_like(torch.zeros([batch_size, seq_len, seq_dim])).to(device)
+    if inference_type == 'noise':
+        l_t = 1 * stochastic * torch.randn_like(torch.zeros([batch_size, seq_len, seq_dim])).to(device)
 
-    # l_t[:, :, 2:4] = real_layout[:, :, 2:4]
-    # l_t[:, :, 5] = real_layout[:, :,5]
-    l_t = real_layout
+        l_t[:, :, 2:4] = real_layout[:, :, 2:4]
+        l_t[:, :, 5] = real_layout[:, :,5]
+
+        time_range = np.flip(timesteps)
+        total_steps = timesteps.shape[0]
+
+    elif inference_type == 'refine':
+        l_t = real_layout
+        total_steps = sum(timesteps <= 201)
+        time_range = np.flip(timesteps[:total_steps])
 
     intermediates = {'y_inter': [l_t], 'pred_y0': [l_t]}
-    # time_range = np.flip(timesteps)
-    # total_steps = timesteps.shape[0]
-    # noise = 1 * torch.randn_like(real_layout).to(device)
-    total_steps = sum(timesteps <= 201)
-    time_range = np.flip(timesteps[:total_steps])
 
     for i, step in enumerate(time_range):
         index = total_steps - i - 1

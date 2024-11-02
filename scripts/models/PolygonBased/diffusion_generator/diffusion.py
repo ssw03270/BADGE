@@ -204,7 +204,7 @@ class Diffusion(nn.Module):
             return eps_theta, e, None
 
 
-    def reverse_ddim(self, real_layout, image_mask, stochastic=True, train_type='generation'):
+    def reverse_ddim(self, real_layout, image_mask, stochastic=True, train_type='generation', inference_type='refine'):
         if train_type == 'generation':
             layout_t_0, intermediates = \
                 ddim_sample_loop(self.network, real_layout, image_mask, self.ddim_timesteps, self.ddim_alphas,
@@ -212,6 +212,6 @@ class Diffusion(nn.Module):
         elif train_type == 'conditional':
             layout_t_0, intermediates = \
                 ddim_cond_sample_loop(self.network, real_layout, image_mask, self.ddim_timesteps, self.ddim_alphas,
-                                      self.ddim_alphas_prev, self.ddim_sigmas, stochastic=stochastic)
+                                      self.ddim_alphas_prev, self.ddim_sigmas, stochastic=stochastic, inference_type=inference_type)
 
         return layout_t_0

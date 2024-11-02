@@ -45,7 +45,7 @@ def main():
     parser.add_argument('--user_name', type=str, default="ssw03270", required=False, help='User name.')
     parser.add_argument('--checkpoint_path', type=str, default='./diffusion_checkpoints/retrieval_conditional_refine/best_model.pt', help='Path to the model checkpoint.')
     parser.add_argument('--output_dir', type=str, default='inference_outputs', help='Directory to save inference results.')
-    parser.add_argument('--test_batch_size', type=int, default=512, required=False, help='Batch size for testing.')
+    parser.add_argument('--test_batch_size', type=int, default=128, required=False, help='Batch size for testing.')
     parser.add_argument('--d_model', type=int, default=512, required=False, help='Model dimension.')
     parser.add_argument("--sample_t_max", default=999, help="maximum t in training", type=int)
     parser.add_argument('--device', type=str, default=None, help='Device to run inference on (e.g., "cuda" or "cpu"). If not set, uses Accelerator default.')
@@ -54,7 +54,7 @@ def main():
     parser.add_argument("--model_name", type=str, default="none", help="coordinate type")
     parser.add_argument("--train_type", type=str, default="conditional", choices=["generation", "conditional"],help="coordinate type")
     parser.add_argument("--retrieval_type", type=str, default="retrieval", choices=["original", "retrieval"],help="coordinate type")
-    parser.add_argument("--inference_type", type=str, default="refine", choices=["refine", "noise"],help="coordinate type")
+    parser.add_argument("--inference_type", type=str, default="noise", choices=["refine", "noise"],help="coordinate type")
     args = parser.parse_args()
 
     if args.model_name == "none":
@@ -69,7 +69,7 @@ def main():
     os.makedirs(args.output_dir + '/' + args.model_name, exist_ok=True)
 
     # Load test dataset
-    test_dataset = BlkLayoutDataset(data_type="test", device=device, is_main_process=accelerator.is_main_process, inference_type=args.inference_type)
+    test_dataset = BlkLayoutDataset(data_type="test", device=device, is_main_process=accelerator.is_main_process, retrieval_type=args.retrieval_type)
     test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, num_workers=4, shuffle=False, collate_fn=custom_collate)
 
     # 모델 초기화
@@ -104,11 +104,14 @@ def main():
             pad_mask = batch[2].to(device)
             region_poly = batch[3]
             # # 모델 Forward
-            layout_output = accelerator.unwrap_model(model).reverse_ddim(layout, image_mask, train_type=args.train_type)
-            
+            layout_output = accelerator.unwrap_model(model).reverse_ddim(layout, image_mask, train_type=args.train_type, inference_type=args.inference_type)
+
             all_coords_outputs += layout_output.cpu().numpy().tolist()
             gt_coords_outputs += layout.cpu().numpy().tolist()
             region_polygons_outputs += region_poly
+
+            if batch_idx == 10:
+                break
 
     coords_output_path = os.path.join(args.output_dir + '/' + args.model_name, 'predicted_coords.pkl')
 

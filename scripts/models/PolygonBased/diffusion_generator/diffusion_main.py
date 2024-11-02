@@ -51,6 +51,7 @@ def main():
     parser.add_argument("--model_name", type=str, default="none", help="coordinate type")
     parser.add_argument("--train_type", type=str, default="conditional", choices=["generation", "conditional"],help="coordinate type")
     parser.add_argument("--retrieval_type", type=str, default="original", choices=["original", "retrieval"],help="coordinate type")
+    parser.add_argument("--load_model_weights", type=str, default="./diffusion_checkpoints/model_name/best_model.pt", help="Path to model weights to load")
     args = parser.parse_args()
 
     accelerator = Accelerator()  # 여기서 설정
@@ -88,15 +89,23 @@ def main():
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
+    args.load_model_weights = args.load_model_weights.replace("model_name", args.model_name)
+    if args.load_model_weights is not None:
+        model_weights = torch.load(args.load_model_weights, map_location=device)
+        model.load_state_dict(model_weights)
+        print(f"Loaded model weights from {args.load_model_weights}")
+        start_epoch = 135
+
     # Accelerator 준비
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)
     val_dataloader = accelerator.prepare(val_dataloader)
 
     best_val_loss = float('inf')
-    best_epoch = 0
+    best_epoch = 0 + start_epoch
     
     # 학습 루프
     for epoch in range(args.num_epochs):
+        epoch = epoch + start_epoch
         model.train()
         total_loss = 0
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", disable=not accelerator.is_local_main_process)

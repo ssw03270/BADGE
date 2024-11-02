@@ -33,7 +33,7 @@ def normalize_coords_uniform(coords, min_coords=None, range_max=None):
 
 class BlkLayoutDataset(Dataset):
     def __init__(self, data_type='train', device='cpu', processed_dir='./processed', is_main_process=True,
-                 inference_type=None):
+                 retrieval_type=None):
         """
         BlkLayoutDataset 클래스의 인스턴스를 초기화합니다.
 
@@ -52,6 +52,7 @@ class BlkLayoutDataset(Dataset):
 
         self.data_type = data_type
         self.processed_dir = processed_dir
+        self.retrieval_type = retrieval_type
         os.makedirs(self.processed_dir, exist_ok=True)
 
         if data_type == 'test':
@@ -77,6 +78,11 @@ class BlkLayoutDataset(Dataset):
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
 
+        if self.retrieval_type == 'retrieval':
+            generated_output_dict_path = "inference_outputs/d_256_cb_512_coords_continuous_norm_blk_generate_retrieval/generated_output_dict.pkl"
+            with open(generated_output_dict_path, 'rb') as f:
+                self.dict_data = pickle.load(f)
+
         self.data_length = len(self.pkl_files)
         print(f"총 {self.data_length}개의 데이터를 로드했습니다 (after preprocessing).")
 
@@ -96,6 +102,12 @@ class BlkLayoutDataset(Dataset):
                 region_polygons = data['region_id2region_polygon']
                 layouts = data['cluster_id2normalized_bldg_layout_blk_list']
                 image_mask = data['blk_image_mask']
+
+                if self.retrieval_type == 'retrieval':
+                    file_path = self.pkl_files[idx]
+                    file_path = file_path.replace(self.folder_path, '')
+                    file_path = file_path.replace('\\', '/')
+                    layouts = self.dict_data[file_path]
 
             # Accumulate data for the batch
             region_polygons = [region_poly.exterior.coords.xy for region_poly in region_polygons.values()]
@@ -125,10 +137,10 @@ class BlkLayoutDataset(Dataset):
                 padding_mask = padding_mask[:MAX_BUILDINGS]
                 
         except EOFError:
-            # print(f"EOFError: Failed to load {self.pkl_files[idx]}. The file may be corrupted or incomplete.")
+            print(f"EOFError: Failed to load {self.pkl_files[idx]}. The file may be corrupted or incomplete.")
             return None  # Skip this file
         except Exception as e:
-            # print(f"Error loading {self.pkl_files[idx]}: {e}")
+            print(f"Error loading {self.pkl_files[idx]}: {e}")
             return None  # Skip this file
              
         return (torch.tensor(bldg_layout_list, dtype=torch.float32),
