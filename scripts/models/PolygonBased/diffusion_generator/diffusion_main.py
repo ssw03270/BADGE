@@ -93,12 +93,12 @@ def main():
     # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    args.load_model_weights = args.load_model_weights.replace("model_name", args.model_name)
-    if args.load_model_weights is not None:
-        model_weights = torch.load(args.load_model_weights, map_location=device)
-        model.load_state_dict(model_weights)
-        print(f"Loaded model weights from {args.load_model_weights}")
-        start_epoch = 135
+    # args.load_model_weights = args.load_model_weights.replace("model_name", args.model_name)
+    # if args.load_model_weights is not None:
+    #     model_weights = torch.load(args.load_model_weights, map_location=device)
+    #     model.load_state_dict(model_weights)
+    #     print(f"Loaded model weights from {args.load_model_weights}")
+    #     start_epoch = 135
 
     # Accelerator 준비
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)

@@ -139,6 +139,7 @@ class BlkLayoutDataset(Dataset):
                 for j in indices:
                     if i < MAX_BUILDINGS and j < MAX_BUILDINGS:
                         self_attn_map[i, j] = 1  # 같은 클러스터 내 빌딩끼리 연결
+                        cross_attn_map[i, j] = 1
 
         # Cross-Attention 맵 설정
         clusters = list(bldg_indices.keys())
