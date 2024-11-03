@@ -106,10 +106,10 @@ class TransformerDecoder(nn.Module):
         condition = self.resnet18(condition).squeeze().unsqueeze(1)
 
         for idx, dec_layer in enumerate(self.layer_stack):
-            dec_output = dec_layer(dec_output, condition, timestep)
+            dec_output = dec_layer(dec_output, condition, timestep, cross_attn_mask, self_attn_mask)
 
-            if idx < self.n_layer - 1:
-                dec_output = F.softplus(dec_output)
+            # if idx < self.n_layer - 1:
+            #     dec_output = F.softplus(dec_output)
 
         dec_output = self.decoding(dec_output)
 
