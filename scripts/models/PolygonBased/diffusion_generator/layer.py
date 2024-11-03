@@ -45,11 +45,13 @@ class DecoderLayer(nn.Module):
 
         super(DecoderLayer, self).__init__()
 
-        self.self_attn = MultiHeadAttention(n_head=n_head, d_model=d_model, dropout=dropout)
+        self.self_attn_self = MultiHeadAttention(n_head=n_head, d_model=d_model, dropout=dropout)
+        self.self_attn_cross = MultiHeadAttention(n_head=n_head, d_model=d_model, dropout=dropout)
+        self.self_attn_global = MultiHeadAttention(n_head=n_head, d_model=d_model, dropout=dropout)
         self.cross_attn = MultiHeadAttention(n_head=n_head, d_model=d_model, dropout=dropout)
         self.pos_ffn = PositionwiseFeedForward(d_model=d_model, d_inner=d_inner, dropout=dropout)
 
-    def forward(self, dec_input, enc_output, timestep, dec_mask=None, enc_mask=None):
+    def forward(self, dec_input, enc_output, timestep, cross_attn_mask, self_attn_mask):
         """
         Forward pass of the decoder layer.
 
@@ -63,7 +65,9 @@ class DecoderLayer(nn.Module):
         - Tensor: The output tensor of the decoder layer after applying self-attention, encoder-decoder attention, and position-wise feed-forward network.
         """
 
-        dec_output = self.self_attn(dec_input, dec_input, dec_input, timestep)
+        dec_output = self.self_attn_self(dec_input, dec_input, dec_input, timestep, self_attn_mask)
+        dec_output = self.self_attn_cross(dec_output, dec_output, dec_output, timestep, cross_attn_mask)
+        dec_output = self.self_attn_global(dec_output, dec_output, dec_output, timestep)
         dec_output = self.cross_attn(dec_output, enc_output, enc_output, timestep)
         dec_output = self.pos_ffn(dec_output)
 

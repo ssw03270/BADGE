@@ -65,6 +65,8 @@ class ClusterLayoutDataset(Dataset):
         elif data_type == 'test':
             self.pkl_files = self.pkl_files[train_split + val_split:]
 
+        self.pkl_files = self.pkl_files[:1000]
+
         retrieval_dict_path = 'retrieval_dict.pkl'
         with open(retrieval_dict_path, 'rb') as f:
             self.retrieval_dict = pickle.load(f)

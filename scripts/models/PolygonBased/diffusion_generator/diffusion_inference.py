@@ -30,15 +30,19 @@ def custom_collate(batch):
     bldg_layout_list = [item[0] for item in batch]  # 건물 레이아웃 데이터
     image_mask_list = [item[1] for item in batch]   # 최소 좌표
     pad_mask_list = [item[2] for item in batch]    # 최대 범위
-    region_polygons = [item[3] for item in batch]
+    cross_attn_mask_list = [item[3] for item in batch]    # 최대 범위
+    self_attn_mask_list = [item[4] for item in batch]    # 최대 범위
+    region_polygons = [item[5] for item in batch]
 
     # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
     # 건물 레이아웃 데이터는 텐서로 변환
     bldg_layout_tensor = torch.stack(bldg_layout_list)
     image_mask_tensor = torch.stack(image_mask_list)
     pad_mask_tensor = torch.stack(pad_mask_list)
+    cross_attn_mask_list = torch.stack(cross_attn_mask_list)
+    self_attn_mask_list = torch.stack(self_attn_mask_list)
 
-    return bldg_layout_tensor, image_mask_tensor, pad_mask_tensor, region_polygons
+    return bldg_layout_tensor, image_mask_tensor, pad_mask_tensor, cross_attn_mask_list, self_attn_mask_list, region_polygons
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for the Transformer model.')
@@ -53,7 +57,7 @@ def main():
     parser.add_argument("--norm_type", type=str, default="blk", help="coordinate type")
     parser.add_argument("--model_name", type=str, default="none", help="coordinate type")
     parser.add_argument("--train_type", type=str, default="conditional", choices=["generation", "conditional"],help="coordinate type")
-    parser.add_argument("--retrieval_type", type=str, default="retrieval", choices=["original", "retrieval"],help="coordinate type")
+    parser.add_argument("--retrieval_type", type=str, default="original", choices=["original", "retrieval"],help="coordinate type")
     parser.add_argument("--inference_type", type=str, default="noise", choices=["refine", "noise"],help="coordinate type")
     args = parser.parse_args()
 
@@ -102,7 +106,10 @@ def main():
             layout = batch[0].to(device)
             image_mask = batch[1].to(device)
             pad_mask = batch[2].to(device)
-            region_poly = batch[3]
+            cross_attn_mask = batch[3].to(device)
+            self_attn_mask = batch[4].to(device)
+            region_poly = batch[5]
+
             # # 모델 Forward
             layout_output = accelerator.unwrap_model(model).reverse_ddim(layout, image_mask, train_type=args.train_type, inference_type=args.inference_type)
 

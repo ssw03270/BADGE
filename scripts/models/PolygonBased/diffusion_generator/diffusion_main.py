@@ -25,15 +25,19 @@ def custom_collate(batch):
     bldg_layout_list = [item[0] for item in batch]  # 건물 레이아웃 데이터
     image_mask_list = [item[1] for item in batch]   # 최소 좌표
     pad_mask_list = [item[2] for item in batch]    # 최대 범위
-    region_polygons = [item[3] for item in batch]
+    cross_attn_mask_list = [item[3] for item in batch]    # 최대 범위
+    self_attn_mask_list = [item[4] for item in batch]    # 최대 범위
+    region_polygons = [item[5] for item in batch]
 
     # 각 데이터를 텐서로 변환하여 일관된 배치를 만듭니다.
     # 건물 레이아웃 데이터는 텐서로 변환
     bldg_layout_tensor = torch.stack(bldg_layout_list)
     image_mask_tensor = torch.stack(image_mask_list)
     pad_mask_tensor = torch.stack(pad_mask_list)
+    cross_attn_mask_list = torch.stack(cross_attn_mask_list)
+    self_attn_mask_list = torch.stack(self_attn_mask_list)
 
-    return bldg_layout_tensor, image_mask_tensor, pad_mask_tensor, region_polygons
+    return bldg_layout_tensor, image_mask_tensor, pad_mask_tensor, cross_attn_mask_list, self_attn_mask_list, region_polygons
 
 # 학습 코드
 def main():
@@ -115,10 +119,13 @@ def main():
             layout = batch[0].to(device)
             image_mask = batch[1].to(device)
             pad_mask = batch[2].to(device)
+            cross_attn_mask = batch[3].to(device)
+            self_attn_mask = batch[4].to(device)
+            region_poly = batch[5]
 
             # # 모델 Forward
             t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
-            eps_theta, e, layout_output = model(layout, image_mask, t, train_type=args.train_type)
+            eps_theta, e, layout_output = model(layout, image_mask, t, cross_attn_mask=cross_attn_mask, self_attn_mask=self_attn_mask, train_type=args.train_type)
 
             # layout_output = torch.clamp(layout_output, min=-1, max=1) / 2 + 0.5
 
@@ -145,10 +152,13 @@ def main():
                 layout = batch[0].to(device)
                 image_mask = batch[1].to(device)
                 pad_mask = batch[2].to(device)
+                cross_attn_mask = batch[3].to(device)
+                self_attn_mask = batch[4].to(device)
+                region_poly = batch[5]
 
                 # # 모델 Forward
                 t = accelerator.unwrap_model(model).sample_t([layout.shape[0]], t_max=args.sample_t_max)
-                eps_theta, e, layout_output = model(layout, image_mask, t, train_type=args.train_type)
+                eps_theta, e, layout_output = model(layout, image_mask, t, cross_attn_mask=cross_attn_mask, self_attn_mask=self_attn_mask, train_type=args.train_type)
                 # layout_output = torch.clamp(layout_output, min=-1, max=1) / 2 + 0.5
 
                 recon_loss = F.mse_loss(layout_output, layout)

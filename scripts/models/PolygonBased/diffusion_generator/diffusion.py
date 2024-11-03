@@ -86,7 +86,7 @@ class TransformerDecoder(nn.Module):
         
         self.decoding = nn.Linear(d_model, 6)
 
-    def forward(self, x, condition, timestep):
+    def forward(self, x, condition, timestep, cross_attn_mask, self_attn_mask):
         """
         Forward pass for the BoundaryEncoder.
 
@@ -183,7 +183,7 @@ class Diffusion(nn.Module):
 
        return t.to(self.device)
 
-    def forward(self, layout, image_mask, t, reparam=True, train_type='generation'):
+    def forward(self, layout, image_mask, t, cross_attn_mask, self_attn_mask, reparam=True, train_type='generation'):
         e = torch.randn_like(layout).to(layout.device)
         l_t_noise = q_sample(layout, self.alphas_bar_sqrt,
                              self.one_minus_alphas_bar_sqrt, t, noise=e)
@@ -192,7 +192,7 @@ class Diffusion(nn.Module):
             l_t_noise[:, :, 2:4] = layout[:, :, 2:4]
             l_t_noise[:, :, 5] = layout[:, :,5]
 
-        eps_theta = self.network(l_t_noise, image_mask, timestep=t)
+        eps_theta = self.network(l_t_noise, image_mask, timestep=t, cross_attn_mask=cross_attn_mask, self_attn_mask=self_attn_mask)
 
         if reparam:
             sqrt_one_minus_alpha_bar_t = extract(self.one_minus_alphas_bar_sqrt, t, l_t_noise)
