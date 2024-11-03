@@ -99,7 +99,8 @@ def main():
     #     model.load_state_dict(model_weights)
     #     print(f"Loaded model weights from {args.load_model_weights}")
     #     start_epoch = 135
-
+    start_epoch = 0
+    
     # Accelerator 준비
     model, optimizer, train_dataloader = accelerator.prepare(model, optimizer, train_dataloader)
     val_dataloader = accelerator.prepare(val_dataloader)
